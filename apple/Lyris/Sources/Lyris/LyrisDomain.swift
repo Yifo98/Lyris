@@ -442,7 +442,8 @@ enum LyrisLyricDisplayPolicy {
         for current: TimedLyric,
         in lyrics: [TimedLyric],
         translatedText: String?,
-        convertsTraditionalChineseToSimplified: Bool
+        convertsTraditionalChineseToSimplified: Bool,
+        showsAdjacentLyrics: Bool = true
     ) -> String? {
         let original = originalText(
             current.original,
@@ -457,6 +458,9 @@ enum LyrisLyricDisplayPolicy {
         if !translation.isEmpty, translation != original {
             return translation
         }
+        guard LyrisCompactLyricContextPolicy.shouldShowNextLine(
+            showsAdjacentLyrics: showsAdjacentLyrics
+        ) else { return nil }
         guard let index = lyrics.firstIndex(where: { $0.id == current.id }),
               lyrics.indices.contains(index + 1) else { return nil }
         let next = originalText(
@@ -1228,8 +1232,20 @@ extension SpotifyAuthorizing {
     }
 }
 
+enum CredentialReadInteraction: Equatable, Sendable {
+    case silent
+    case userInitiated
+}
+
 protocol CredentialVault {
     func read(account: String) throws -> String?
+    func read(account: String, interaction: CredentialReadInteraction) throws -> String?
     func write(_ secret: String, account: String) throws
     func delete(account: String) throws
+}
+
+extension CredentialVault {
+    func read(account: String, interaction: CredentialReadInteraction) throws -> String? {
+        try read(account: account)
+    }
 }

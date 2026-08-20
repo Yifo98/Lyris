@@ -619,7 +619,9 @@ struct LyrisTopPlayerView: View {
         LyrisCompactLyricProjection.text(
             mode: store.menuBarLyricMode,
             original: primaryLyric,
-            translated: translationLyric
+            translated: store.activeLyric.flatMap {
+                store.secondaryIslandLyric(for: $0, showsAdjacentLyrics: false)
+            }
         )
     }
 

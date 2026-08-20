@@ -1,9 +1,52 @@
 import Foundation
+import Security
 import XCTest
 @testable import Lyris
 
 @MainActor
 final class LyricsPipelineCancellationTests: XCTestCase {
+    func testColdLaunchRestoresTranslationCredentialWithoutRequestingUserInteraction() async throws {
+        let playback = TestPlaybackAdapter()
+        let vault = InteractionRecordingCredentialVault(secret: nil)
+
+        _ = makeStore(
+            playback: playback,
+            lyricsProvider: EmptyLyricsProvider(),
+            translation: ImmediateTranslationAdapter(),
+            vault: vault
+        )
+
+        try await eventually { !vault.readInteractions.isEmpty }
+        XCTAssertEqual(vault.readInteractions, [.silent])
+    }
+
+    func testExplicitSavedCredentialAuthorizationUnlocksAnOlderKeychainItemOnce() async throws {
+        let playback = TestPlaybackAdapter()
+        let vault = InteractionRecordingCredentialVault(
+            secret: "fixture-key",
+            requiresAuthorizationForSilentRead: true
+        )
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: EmptyLyricsProvider(),
+            translation: ImmediateTranslationAdapter(),
+            vault: vault
+        )
+        try await eventually {
+            store.translationCredentialRequiresAuthorization
+                && vault.readInteractions == [.silent]
+        }
+        XCTAssertTrue(store.translationAPIKey.isEmpty)
+
+        store.authorizeSavedTranslationCredential()
+
+        try await eventually {
+            store.translationAPIKey == "fixture-key"
+                && !store.translationCredentialRequiresAuthorization
+                && vault.readInteractions == [.silent, .userInitiated]
+        }
+    }
+
     func testStorePublishesWordTimedProgressFromPresentedDocument() async throws {
         let playback = TestPlaybackAdapter()
         let store = makeStore(
@@ -205,6 +248,7 @@ final class LyricsPipelineCancellationTests: XCTestCase {
         let suiteName = "Lyris.LyricsPipelineCancellationTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(TranslationProvider.deepSeek.rawValue, forKey: "translationProvider")
         return LyrisStore(
             playbackAdapter: playback,
             lyricsProvider: lyricsProvider,
@@ -454,6 +498,49 @@ private struct EmptyCredentialVault: CredentialVault {
     func read(account: String) throws -> String? { nil }
     func write(_ secret: String, account: String) throws {}
     func delete(account: String) throws {}
+}
+
+private final class InteractionRecordingCredentialVault: CredentialVault, @unchecked Sendable {
+    private let lock = NSLock()
+    private let secret: String?
+    private let requiresAuthorizationForSilentRead: Bool
+    private var interactions: [CredentialReadInteraction] = []
+
+    init(
+        secret: String?,
+        requiresAuthorizationForSilentRead: Bool = false
+    ) {
+        self.secret = secret
+        self.requiresAuthorizationForSilentRead = requiresAuthorizationForSilentRead
+    }
+
+    var readInteractions: [CredentialReadInteraction] {
+        lock.lock()
+        defer { lock.unlock() }
+        return interactions
+    }
+
+    func read(account: String) throws -> String? {
+        record(.userInitiated)
+        return secret
+    }
+
+    func read(account: String, interaction: CredentialReadInteraction) throws -> String? {
+        record(interaction)
+        if interaction == .silent, requiresAuthorizationForSilentRead {
+            throw KeychainError.status(errSecInteractionNotAllowed)
+        }
+        return secret
+    }
+
+    func write(_ secret: String, account: String) throws {}
+    func delete(account: String) throws {}
+
+    private func record(_ interaction: CredentialReadInteraction) {
+        lock.lock()
+        interactions.append(interaction)
+        lock.unlock()
+    }
 }
 
 private struct StaticCredentialVault: CredentialVault {

@@ -156,7 +156,10 @@ struct LRCLibLyricsProvider: LyricsProviding {
     private func request(_ url: URL) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
-        request.setValue("Lyris/0.1.0 (local macOS prototype)", forHTTPHeaderField: "User-Agent")
+        request.setValue(
+            "Lyris/0.1.0 (https://github.com/Yifo98/Lyris)",
+            forHTTPHeaderField: "User-Agent"
+        )
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw LRCLibError.invalidResponse }
         return (data, http)

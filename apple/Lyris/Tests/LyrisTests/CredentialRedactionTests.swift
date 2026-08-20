@@ -3,6 +3,19 @@ import XCTest
 @testable import Lyris
 
 final class CredentialRedactionTests: XCTestCase {
+    func testAdHocBuildNeverTouchesAnUnapprovedKeychainItemDuringSilentRestore() throws {
+        let suiteName = "Lyris.CredentialAccessIdentityTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let vault = KeychainCredentialVault(defaults: defaults)
+
+        XCTAssertThrowsError(
+            try vault.read(account: "fixture.account", interaction: .silent)
+        ) { error in
+            XCTAssertTrue((error as? KeychainError)?.requiresUserInteraction == true)
+        }
+    }
+
     func testRedactsSensitiveFieldsAcrossCommonLogFormats() {
         let log = #"client_secret=SECRET_FIXTURE access_token":"ACCESS_FIXTURE" refresh_token=REFRESH_FIXTURE code=AUTH_CODE_FIXTURE code_verifier=VERIFIER_FIXTURE api_key: API_FIXTURE"#
 

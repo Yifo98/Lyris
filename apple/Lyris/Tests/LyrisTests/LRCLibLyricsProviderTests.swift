@@ -127,6 +127,52 @@ final class LRCLibLyricsProviderTests: XCTestCase {
         XCTAssertEqual(result.lyrics.map(\.original), ["第一行", "第二行"])
     }
 
+    func testSimplifiedSearchAcceptsAParenthesizedWithCreditFromLRCLIB() async throws {
+        LRCLibFixtureURLProtocol.response = { request in
+            let url = try XCTUnwrap(request.url)
+            if url.path == "/api/get-cached" {
+                return (404, Data(), [:])
+            }
+
+            let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+            let title = components.queryItems?.first(where: { $0.name == "track_name" })?.value
+            let artist = components.queryItems?.first(where: { $0.name == "artist_name" })?.value
+            guard title == "说好不哭", artist == "周杰伦" else {
+                return (200, Data("[]".utf8), [:])
+            }
+            let body = """
+            [
+              {
+                "id": 35136058,
+                "trackName": "说好不哭 (with 五月天阿信)",
+                "artistName": "周杰伦",
+                "albumName": "说好不哭 (with 五月天阿信)",
+                "duration": 222.0,
+                "plainLyrics": "第一行\\n第二行",
+                "syncedLyrics": "[00:01.00] 第一行\\n[00:03.00] 第二行"
+              }
+            ]
+            """
+            return (200, Data(body.utf8), [:])
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [LRCLibFixtureURLProtocol.self]
+        let provider = LRCLibLyricsProvider(session: URLSession(configuration: configuration))
+        let track = Track(
+            id: "spotify:track:say-no-crying",
+            title: "說好不哭",
+            artist: "周杰倫",
+            album: "說好不哭",
+            duration: 222
+        )
+
+        let result = try await provider.lyrics(for: track)
+
+        XCTAssertEqual(result.sourceID, "lrclib:35136058")
+        XCTAssertEqual(result.lyrics.map(\.original), ["第一行", "第二行"])
+    }
+
     func testSearchFallsBackToTitleOnlyWhenProviderArtistMetadataDiffers() async throws {
         var titleOnlyRequestCount = 0
         LRCLibFixtureURLProtocol.response = { request in

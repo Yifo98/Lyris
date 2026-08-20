@@ -154,19 +154,19 @@ private struct ParsedTitle {
 
     private static func removingFeatureCredit(from value: String) -> String {
         let withoutBracketedCredits = replacing(
-            #"(?i)[\s\-–—]*(?:\(|\[)\s*(?:feat(?:uring)?|ft)\.?\s+[^\)\]]+(?:\)|\])"#,
+            #"(?i)[\s\-–—]*(?:\(|\[)\s*(?:feat(?:uring)?|ft|with|與|与)\.?\s+[^\)\]]+(?:\)|\])"#,
             in: value,
             with: " "
         )
         return replacing(
-            #"(?i)[\s\-–—]*(?:\(|\[)?\s*(?:feat(?:uring)?|ft)\.?\s+[^\)\]]+(?:\)|\])?\s*$"#,
+            #"(?i)[\s\-–—]*(?:\(|\[)?\s*(?:feat(?:uring)?|ft|with|與|与)\.?\s+[^\)\]]+(?:\)|\])?\s*$"#,
             in: withoutBracketedCredits,
             with: " "
         )
     }
 
     private static func featureCreditContents(in value: String) -> [String] {
-        let pattern = #"(?i)(?:feat(?:uring)?|ft)\.?\s+(.+?)(?=\s(?:\(|\[)|\s[-–—]\s|\)|\]|$)"#
+        let pattern = #"(?i)(?:feat(?:uring)?|ft|with|與|与)\.?\s+(.+?)(?=\s(?:\(|\[)|\s[-–—]\s|\)|\]|$)"#
         guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
         let matches = expression.matches(
             in: value,
@@ -244,7 +244,12 @@ private struct ParsedArtists {
         ).lowercased()
         let separatorPattern = #"(?i)\s*(?:,|;|/|&|\+|×|\b(?:feat(?:uring)?|ft|with|and|x)\.?\b)\s*"#
         let separated = replacing(separatorPattern, in: folded, with: "|")
-        components = separated
+        let aliasesSeparated = replacing(
+            #"[\(\)\[\]（）【】]"#,
+            in: separated,
+            with: "|"
+        )
+        components = aliasesSeparated
             .split(separator: "|")
             .map { NormalizedText(String($0)).value }
             .filter { !$0.isEmpty }

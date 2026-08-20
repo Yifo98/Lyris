@@ -40,6 +40,44 @@ final class LyricsMatcherTests: XCTestCase {
         XCTAssertEqual(matcher.bestMatch(for: track, among: candidates)?.index, 0)
     }
 
+    func testParenthesizedWithCreditDoesNotHideAnOtherwiseExactChineseMatch() {
+        let track = makeTrack(
+            title: "說好不哭",
+            artist: "周杰倫",
+            album: "說好不哭",
+            duration: 222
+        )
+        let candidates = [
+            candidate(
+                title: "说好不哭 (with 五月天阿信)",
+                artist: "周杰伦",
+                album: "说好不哭 (with 五月天阿信)",
+                duration: 222
+            ),
+        ]
+
+        XCTAssertEqual(matcher.bestMatch(for: track, among: candidates)?.index, 0)
+    }
+
+    func testParenthesizedChineseStageNameAliasMatchesTheSpotifyArtist() {
+        let track = makeTrack(
+            title: "如果你也聽說",
+            artist: "張惠妹",
+            album: "Star",
+            duration: 313
+        )
+        let candidates = [
+            candidate(
+                title: "如果你也聽說",
+                artist: "aMEI (張惠妹)",
+                album: "Star",
+                duration: 313
+            ),
+        ]
+
+        XCTAssertEqual(matcher.bestMatch(for: track, among: candidates)?.index, 0)
+    }
+
     func testFeatureArtistNameIsNotMistakenForARecordingVersion() {
         let track = makeTrack(
             title: "Rather Be (feat. Clean Bandit)",

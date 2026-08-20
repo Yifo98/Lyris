@@ -335,6 +335,9 @@ struct LyrisSettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 72, alignment: .trailing)
                 }
+                Text("正值让歌词更晚出现，负值让歌词更早出现；调整会同时作用于灵动岛、悬浮条和桌面歌词。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -572,6 +575,19 @@ struct LyrisSettingsView: View {
                     }
                     .buttonStyle(.borderless)
                     .focusable(false)
+                }
+
+                if store.translationCredentialRequiresAuthorization {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Button("读取本机已保存的 API Key") {
+                            store.authorizeSavedTranslationCredential()
+                        }
+                        .buttonStyle(.bordered)
+
+                        Text("只有点击这里才会请求登录钥匙串权限；请选择“始终允许”，本正式版本后续启动将不再重复询问。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Picker("翻译方式", selection: Binding(

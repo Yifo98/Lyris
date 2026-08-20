@@ -1,5 +1,7 @@
 import AppKit
+import CryptoKit
 import Foundation
+import LocalAuthentication
 import Network
 import Security
 
@@ -774,12 +776,40 @@ enum SpotifyAuthorizationError: LocalizedError {
 struct KeychainCredentialVault: CredentialVault {
     private let service = "com.dyifoo.lyris"
     private let legacyService = "com.dyifoo.melofloat"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     func read(account: String) throws -> String? {
-        if let current = try read(account: account, service: service) {
+        try read(account: account, interaction: .silent)
+    }
+
+    func read(
+        account: String,
+        interaction: CredentialReadInteraction
+    ) throws -> String? {
+        if interaction == .silent, !hasCurrentAccessIdentity(for: account) {
+            // Ad-hoc builds receive a new code requirement whenever the
+            // executable changes. Never touch secret data automatically until
+            // this exact build has either stored the item or the user has
+            // explicitly authorized it once.
+            throw KeychainError.authorizationRequired
+        }
+        if let current = try read(
+            account: account,
+            service: service,
+            interaction: interaction
+        ) {
+            rememberCurrentAccessIdentity(for: account)
             return current
         }
-        guard let legacy = try read(account: account, service: legacyService) else {
+        guard let legacy = try read(
+            account: account,
+            service: legacyService,
+            interaction: interaction
+        ) else {
             return nil
         }
 
@@ -788,23 +818,38 @@ struct KeychainCredentialVault: CredentialVault {
         // readable so the user is never forced to re-enter a secret.
         do {
             try write(legacy, account: account, service: service)
-            if try read(account: account, service: service) == legacy {
+            if try read(
+                account: account,
+                service: service,
+                interaction: interaction
+            ) == legacy {
                 try? delete(account: account, service: legacyService)
             }
         } catch {
+            rememberCurrentAccessIdentity(for: account)
             return legacy
         }
+        rememberCurrentAccessIdentity(for: account)
         return legacy
     }
 
-    private func read(account: String, service: String) throws -> String? {
-        let query: [String: Any] = [
+    private func read(
+        account: String,
+        service: String,
+        interaction: CredentialReadInteraction
+    ) throws -> String? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if interaction == .silent {
+            let authenticationContext = LAContext()
+            authenticationContext.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = authenticationContext
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
@@ -819,6 +864,7 @@ struct KeychainCredentialVault: CredentialVault {
             return
         }
         try write(secret, account: account, service: service)
+        rememberCurrentAccessIdentity(for: account)
     }
 
     private func write(_ secret: String, account: String, service: String) throws {
@@ -850,6 +896,7 @@ struct KeychainCredentialVault: CredentialVault {
             }
         }
         if let firstError { throw firstError }
+        defaults.removeObject(forKey: accessIdentityKey(for: account))
     }
 
     private func delete(account: String, service: String) throws {
@@ -863,14 +910,51 @@ struct KeychainCredentialVault: CredentialVault {
             throw KeychainError.status(status)
         }
     }
+
+    private func hasCurrentAccessIdentity(for account: String) -> Bool {
+        guard let current = Self.currentAccessIdentity else { return false }
+        return defaults.string(forKey: accessIdentityKey(for: account)) == current
+    }
+
+    private func rememberCurrentAccessIdentity(for account: String) {
+        guard let current = Self.currentAccessIdentity else { return }
+        defaults.set(current, forKey: accessIdentityKey(for: account))
+    }
+
+    private func accessIdentityKey(for account: String) -> String {
+        let accountDigest = SHA256.hash(data: Data(account.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "keychainAccessIdentity.v1.\(accountDigest)"
+    }
+
+    private static let currentAccessIdentity: String? = {
+        guard let executableURL = Bundle.main.executableURL,
+              let executable = try? Data(contentsOf: executableURL) else { return nil }
+        return SHA256.hash(data: executable)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }()
 }
 
 enum KeychainError: LocalizedError {
     case status(OSStatus)
+    case authorizationRequired
 
     var errorDescription: String? {
         switch self {
         case .status(let status): "Keychain 操作失败（\(status)）"
+        case .authorizationRequired:
+            "已保存的凭据属于另一个 Lyris 构建；需要由用户主动授权一次。"
+        }
+    }
+
+    var requiresUserInteraction: Bool {
+        switch self {
+        case .status(let status):
+            status == errSecInteractionNotAllowed || status == errSecAuthFailed
+        case .authorizationRequired:
+            true
         }
     }
 }

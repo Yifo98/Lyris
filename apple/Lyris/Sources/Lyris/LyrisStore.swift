@@ -199,6 +199,7 @@ final class LyrisStore: ObservableObject {
     @Published private(set) var availableTranslationModels: [String] = []
     @Published private(set) var isTestingTranslation = false
     @Published private(set) var isTranslationConnected = false
+    @Published private(set) var translationCredentialRequiresAuthorization = false
     @Published var configurationStatus: String?
 
     var onHideRequested: (() -> Void)?
@@ -316,7 +317,9 @@ final class LyrisStore: ObservableObject {
             self?.applySpotifyAuthorizationState(state)
         }
         playbackAdapter.start()
-        restoreTranslationCredential(for: translationProvider)
+        if hasStoredTranslationCredentialMetadata(for: translationProvider) {
+            restoreTranslationCredential(for: translationProvider)
+        }
         restoreSpotifyConnectionIfPossible()
     }
 
@@ -385,12 +388,16 @@ final class LyrisStore: ObservableObject {
         )
     }
 
-    func secondaryIslandLyric(for lyric: TimedLyric) -> String? {
+    func secondaryIslandLyric(
+        for lyric: TimedLyric,
+        showsAdjacentLyrics: Bool = true
+    ) -> String? {
         LyrisLyricDisplayPolicy.secondaryText(
             for: lyric,
             in: lyrics,
             translatedText: displayedTranslation(for: lyric),
-            convertsTraditionalChineseToSimplified: convertsTraditionalChineseToSimplified
+            convertsTraditionalChineseToSimplified: convertsTraditionalChineseToSimplified,
+            showsAdjacentLyrics: showsAdjacentLyrics
         )
     }
 
@@ -1503,6 +1510,7 @@ final class LyrisStore: ObservableObject {
         translationBaseURL = provider.defaultBaseURL
         translationModel = provider.defaultModel
         translationAPIKey = ""
+        translationCredentialRequiresAuthorization = false
         translationThinkingEnabled = false
         applySuggestedTranslationPricing()
         availableTranslationModels = []
@@ -1511,7 +1519,9 @@ final class LyrisStore: ObservableObject {
         lyricCache.removeAll()
         configurationStatus = nil
         restartLyricsForConfigurationChange()
-        restoreTranslationCredential(for: provider)
+        if hasStoredTranslationCredentialMetadata(for: provider) {
+            restoreTranslationCredential(for: provider)
+        }
     }
 
     func updateTranslationBaseURLDraft(_ value: String) {
@@ -1679,6 +1689,9 @@ final class LyrisStore: ObservableObject {
         guard translationAPIKey != value else { return }
         invalidatePendingTranslationConfiguration()
         translationAPIKey = value
+        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            translationCredentialRequiresAuthorization = false
+        }
         availableTranslationModels = []
         LyrisTranslationModelCatalogPersistence.clear(from: defaults)
         configurationStatus = localized(
@@ -1855,6 +1868,11 @@ final class LyrisStore: ObservableObject {
         }
         do {
             try credentialVault.write(key, account: translationProvider.credentialAccount)
+            translationCredentialRequiresAuthorization = false
+            defaults.set(
+                true,
+                forKey: translationCredentialMetadataKey(for: translationProvider)
+            )
             defaults.set(translationProvider.rawValue, forKey: "translationProvider")
             defaults.set(translationBaseURL, forKey: "translationBaseURL")
             defaults.set(translationModel, forKey: "translationModel")
@@ -1893,6 +1911,11 @@ final class LyrisStore: ObservableObject {
         }
         do {
             try credentialVault.write(key, account: translationProvider.credentialAccount)
+            translationCredentialRequiresAuthorization = false
+            defaults.set(
+                true,
+                forKey: translationCredentialMetadataKey(for: translationProvider)
+            )
         } catch {
             configurationStatus = error.localizedDescription
             return
@@ -2918,24 +2941,84 @@ final class LyrisStore: ObservableObject {
         )
     }
 
-    private func restoreTranslationCredential(for provider: TranslationProvider) {
+    func authorizeSavedTranslationCredential() {
+        restoreTranslationCredential(for: translationProvider, interaction: .userInitiated)
+    }
+
+    private func restoreTranslationCredential(
+        for provider: TranslationProvider,
+        interaction: CredentialReadInteraction = .silent
+    ) {
         translationCredentialRestoreTask?.cancel()
         let vault = UncheckedCredentialVault(base: credentialVault)
         let account = provider.credentialAccount
         translationCredentialRestoreTask = Task { [weak self] in
-            let restored = await Task.detached(priority: .utility) {
-                try? vault.base.read(account: account)
+            let outcome = await Task.detached(priority: .utility) {
+                do {
+                    return (
+                        secret: try vault.base.read(account: account, interaction: interaction),
+                        requiresAuthorization: false,
+                        errorDescription: Optional<String>.none
+                    )
+                } catch {
+                    return (
+                        secret: Optional<String>.none,
+                        requiresAuthorization:
+                            (error as? KeychainError)?.requiresUserInteraction == true,
+                        errorDescription: Optional(error.localizedDescription)
+                    )
+                }
             }.value
             guard !Task.isCancelled,
                   let self,
                   self.translationProvider == provider,
                   self.translationAPIKey.isEmpty else { return }
-            self.translationAPIKey = restored ?? ""
+            if outcome.requiresAuthorization {
+                self.translationCredentialRequiresAuthorization = true
+                self.configurationStatus = self.localized(
+                    zh: "检测到旧版本保存的 API Key。为避免启动时突然弹出系统密码框，请在翻译设置中主动允许读取一次。",
+                    en: "A key saved by an earlier build was found. To avoid an unexpected password prompt at launch, authorize access once from Translation settings."
+                )
+                return
+            }
+            if let errorDescription = outcome.errorDescription {
+                self.translationCredentialRequiresAuthorization = false
+                if interaction == .userInitiated {
+                    self.configurationStatus = errorDescription
+                }
+                return
+            }
+            self.translationCredentialRequiresAuthorization = false
+            self.translationAPIKey = outcome.secret ?? ""
+            if interaction == .userInitiated {
+                self.configurationStatus = self.translationAPIKey.isEmpty
+                    ? self.localized(
+                        zh: "本机钥匙串中没有找到该翻译服务保存的 API Key。",
+                        en: "No saved API key was found for this translation service."
+                    )
+                    : self.localized(
+                        zh: "已读取本机保存的 API Key。选择“始终允许”后，本正式版本后续启动会静默读取。",
+                        en: "The saved API key was loaded. After choosing Always Allow, this release will read it silently on later launches."
+                    )
+            }
             guard !self.translationAPIKey.isEmpty,
                   self.playback.track.id != "loading",
                   self.playback.track.id != "spotify:idle" else { return }
             self.startLyricsLoad(for: self.playback.track)
         }
+    }
+
+    private func hasStoredTranslationCredentialMetadata(
+        for provider: TranslationProvider
+    ) -> Bool {
+        defaults.bool(forKey: translationCredentialMetadataKey(for: provider))
+            || defaults.string(forKey: "translationProvider") == provider.rawValue
+    }
+
+    private func translationCredentialMetadataKey(
+        for provider: TranslationProvider
+    ) -> String {
+        "translationCredentialStored.v1.\(provider.rawValue)"
     }
 
     private func restoreFirstUseState() {

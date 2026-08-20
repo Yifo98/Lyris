@@ -428,6 +428,21 @@ final class LyrisPresentationTests: XCTestCase {
         )
     }
 
+    func testCompactLyricNeverUsesTheNextLineAsAFakeTranslation() {
+        let current = TimedLyric(startTime: 0, original: "当前歌词", translation: "")
+        let next = TimedLyric(startTime: 4, original: "下一句歌词", translation: "")
+
+        XCTAssertNil(
+            LyrisLyricDisplayPolicy.secondaryText(
+                for: current,
+                in: [current, next],
+                translatedText: nil,
+                convertsTraditionalChineseToSimplified: true,
+                showsAdjacentLyrics: false
+            )
+        )
+    }
+
     func testDistinctTranslationWinsOverNextLineFallback() {
         let current = TimedLyric(startTime: 0, original: "Hello", translation: "")
         let next = TimedLyric(startTime: 4, original: "Next", translation: "")
@@ -1215,6 +1230,30 @@ final class LyrisPresentationTests: XCTestCase {
             ),
             0.5,
             accuracy: 0.001
+        )
+    }
+
+    func testPositiveLyricCalibrationKeepsTheCurrentLineVisibleLonger() {
+        let lyrics = [
+            TimedLyric(startTime: 10, original: "当前歌词", translation: ""),
+            TimedLyric(startTime: 14, original: "下一句歌词", translation: ""),
+        ]
+
+        XCTAssertEqual(
+            LyrisLyricLineProgress.activeIndex(
+                position: 14.5,
+                timingDelay: 0,
+                lyrics: lyrics
+            ),
+            1
+        )
+        XCTAssertEqual(
+            LyrisLyricLineProgress.activeIndex(
+                position: 14.5,
+                timingDelay: 1,
+                lyrics: lyrics
+            ),
+            0
         )
     }
 

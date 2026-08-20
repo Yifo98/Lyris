@@ -45,7 +45,7 @@ final class LyrisAppDelegate: NSObject, NSApplicationDelegate {
 
         let vault: CredentialVault = isDemo
             ? LyrisDemoCredentialVault()
-            : KeychainCredentialVault()
+            : KeychainCredentialVault(defaults: defaults)
         let broker = SpotifySessionBroker(
             credentialVault: vault,
             persistentSessionDefaults: defaults
