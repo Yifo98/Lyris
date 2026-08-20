@@ -1184,6 +1184,8 @@ struct LyrisGlobalFlowThreadOverlay: View {
     let style: LinkedEffectStyle
     let skin: LyrisInterfaceSkin
     let isPlaying: Bool
+    var isActive = true
+    var framesPerSecond: Double?
     var seed: String = "lyris-global-flow"
     var composition: LyrisFlowComposition = .interwoven
     var progress: Double = 0.5
@@ -1193,12 +1195,19 @@ struct LyrisGlobalFlowThreadOverlay: View {
         TimelineView(
             .animation(
                 minimumInterval: 1 / Double(
-                    composition == .counterpoint
-                        ? LyrisExpandedIslandEffectPolicy.framesPerSecond
-                        : LyrisFlowThreadRenderPolicy.framesPerSecond
+                    max(
+                        framesPerSecond
+                            ?? Double(
+                                composition == .counterpoint
+                                    ? LyrisExpandedIslandEffectPolicy.framesPerSecond
+                                    : LyrisFlowThreadRenderPolicy.framesPerSecond
+                            ),
+                        1
+                    )
                 ),
                 paused: LyrisLinkedEffectMotionPolicy.timelineIsPaused(
-                    style: resolvedStyle
+                    style: resolvedStyle,
+                    isActive: isActive
                 )
             )
         ) { timeline in
@@ -1368,10 +1377,16 @@ struct LyrisWaveformView: View {
     let trackID: String
     let progress: Double
     let isPlaying: Bool
+    var isActive = true
     var accentColor: Color = LyrisTheme.accent
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 18, paused: !isPlaying)) { timeline in
+        TimelineView(
+            .animation(
+                minimumInterval: 1 / 18,
+                paused: !isActive || !isPlaying
+            )
+        ) { timeline in
             let phase = timeline.date.timeIntervalSinceReferenceDate
             GeometryReader { proxy in
                 let count = max(10, min(84, Int(proxy.size.width / 3.2)))
@@ -1473,6 +1488,13 @@ enum LyrisLinkedEffectMotionPolicy {
         !style.normalized.profile.isEnabled
     }
 
+    static func timelineIsPaused(
+        style: LinkedEffectStyle,
+        isActive: Bool
+    ) -> Bool {
+        !isActive || timelineIsPaused(style: style)
+    }
+
     static func phaseScale(isPlaying: Bool) -> Double {
         isPlaying ? 1 : 0.28
     }
@@ -1482,6 +1504,8 @@ struct LyrisLinkedEffectOverlay: View {
     let style: LinkedEffectStyle
     let skin: LyrisInterfaceSkin
     let isPlaying: Bool
+    var isActive = true
+    var framesPerSecond = Double(LyrisLinkedEffectMotionPolicy.framesPerSecond)
     var seed: String = "lyris-global-ambient"
     var progress: Double = 0.5
 
@@ -1490,10 +1514,11 @@ struct LyrisLinkedEffectOverlay: View {
         TimelineView(
             .animation(
                 minimumInterval: 1 / Double(
-                    LyrisLinkedEffectMotionPolicy.framesPerSecond
+                    max(framesPerSecond, 1)
                 ),
                 paused: LyrisLinkedEffectMotionPolicy.timelineIsPaused(
-                    style: resolvedStyle
+                    style: resolvedStyle,
+                    isActive: isActive
                 )
             )
         ) { timeline in

@@ -6,18 +6,28 @@ struct LyrisSettingsRootView: View {
     var body: some View {
         Group {
             if let store = runtime.store {
-                LyrisSettingsView(store: store)
+                LyrisSettingsView(
+                    store: store,
+                    surfaceVisibility: runtime.surfaceVisibility
+                )
             } else {
                 ProgressView("正在载入 Lyris 设置…")
                     .frame(width: 680, height: 480)
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            runtime.surfaceVisibility.setSystemSettingsVisible(true)
+        }
+        .onDisappear {
+            runtime.surfaceVisibility.setSystemSettingsVisible(false)
+        }
     }
 }
 
 struct LyrisSettingsView: View {
     @ObservedObject var store: LyrisStore
+    @ObservedObject var surfaceVisibility: LyrisSurfaceVisibility
     @State private var revealsSpotifyClientID = false
     @State private var revealsTranslationAPIKey = false
 
@@ -42,6 +52,8 @@ struct LyrisSettingsView: View {
                     style: store.linkedEffectStyle,
                     skin: store.interfaceSkin,
                     isPlaying: material.animates,
+                    isActive: surfaceVisibility.isSettingsWindowVisible,
+                    framesPerSecond: 12,
                     seed: "lyris-settings-\(store.interfaceSkin.rawValue)",
                     progress: 0.5
                 )
@@ -51,6 +63,8 @@ struct LyrisSettingsView: View {
                     style: store.linkedEffectStyle,
                     skin: store.interfaceSkin,
                     isPlaying: material.animates,
+                    isActive: surfaceVisibility.isSettingsWindowVisible,
+                    framesPerSecond: 12,
                     seed: "lyris-settings-flow-\(store.interfaceSkin.rawValue)"
                 )
                 .opacity(material.effectOpacity * 0.38)

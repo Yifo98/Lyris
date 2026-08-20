@@ -583,9 +583,47 @@ enum LyrisWindowPlacementPolicy {
 }
 
 @MainActor
-final class LyrisWindowController: NSObject, NSWindowDelegate {
+final class LyrisSurfaceVisibility: ObservableObject {
+    @Published private(set) var isTopPlayerVisible = false
+    @Published private(set) var isMainWindowVisible = false
+    @Published private(set) var isSettingsWindowVisible = false
+    @Published private(set) var isPopoverVisible = false
+
+    private var isCustomSettingsVisible = false
+    private var isSystemSettingsVisible = false
+
+    func setTopPlayerVisible(_ visible: Bool) {
+        isTopPlayerVisible = visible
+    }
+
+    func setMainWindowVisible(_ visible: Bool) {
+        isMainWindowVisible = visible
+    }
+
+    func setCustomSettingsVisible(_ visible: Bool) {
+        isCustomSettingsVisible = visible
+        updateSettingsVisibility()
+    }
+
+    func setSystemSettingsVisible(_ visible: Bool) {
+        isSystemSettingsVisible = visible
+        updateSettingsVisibility()
+    }
+
+    func setPopoverVisible(_ visible: Bool) {
+        isPopoverVisible = visible
+    }
+
+    private func updateSettingsVisibility() {
+        isSettingsWindowVisible = isCustomSettingsVisible || isSystemSettingsVisible
+    }
+}
+
+@MainActor
+final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate {
     private let store: LyrisStore
     private let refreshAccountState: () -> Void
+    private let surfaceVisibility: LyrisSurfaceVisibility
     private let islandModel = LyrisIslandModel()
     private let mainWindow: NSWindow
     private let topPanel: NSPanel
@@ -601,16 +639,19 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
     private var isApplyingFloatingPresentationMode = false
     private var floatingSurfaceModeState: LyrisFloatingSurfaceModeState
     private var hasEstablishedMainWindowFrame = false
+    private var hasInstalledMainWindowContent = false
     private var cancellables = Set<AnyCancellable>()
     private var topPlayerMetrics: LyrisScreenMetrics?
     private weak var topPlayerScreen: NSScreen?
 
     init(
         store: LyrisStore,
-        refreshAccountState: @escaping () -> Void
+        refreshAccountState: @escaping () -> Void,
+        surfaceVisibility: LyrisSurfaceVisibility
     ) {
         self.store = store
         self.refreshAccountState = refreshAccountState
+        self.surfaceVisibility = surfaceVisibility
         floatingSurfaceModeState = LyrisFloatingSurfaceModeState(
             initialMode: store.floatingPresentationMode
         )
@@ -620,9 +661,6 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
 
         mainWindow.delegate = self
         topPanel.delegate = self
-        mainWindow.contentView = NSHostingView(
-            rootView: LyrisMainWindowView(store: store)
-        )
         hasEstablishedMainWindowFrame = mainWindow.setFrameUsingName(
             Self.mainWindowFrameAutosaveName
         )
@@ -687,10 +725,12 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
 
     func showMainWindow() {
         refreshAccountState()
+        ensureMainWindowContent()
         if !hasEstablishedMainWindowFrame {
             placeMainWindowAvoidingTopPlayer()
             hasEstablishedMainWindowFrame = true
         }
+        surfaceVisibility.setMainWindowVisible(true)
         NSApp.activate(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
     }
@@ -737,7 +777,10 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
             createdWindow.delegate = self
             createdWindow.appearance = NSAppearance(named: .darkAqua)
             createdWindow.contentView = NSHostingView(
-                rootView: LyrisSettingsView(store: store)
+                rootView: LyrisSettingsView(
+                    store: store,
+                    surfaceVisibility: surfaceVisibility
+                )
             )
             if !createdWindow.setFrameUsingName(Self.settingsWindowFrameAutosaveName) {
                 createdWindow.center()
@@ -747,13 +790,47 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
             window = createdWindow
         }
 
+        surfaceVisibility.setCustomSettingsVisible(true)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if sender === mainWindow {
+            surfaceVisibility.setMainWindowVisible(false)
+        } else if sender === settingsWindow {
+            surfaceVisibility.setCustomSettingsVisible(false)
+        }
         sender.orderOut(nil)
         return false
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if window === mainWindow {
+            surfaceVisibility.setMainWindowVisible(false)
+        } else if window === settingsWindow {
+            surfaceVisibility.setCustomSettingsVisible(false)
+        }
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if window === mainWindow {
+            surfaceVisibility.setMainWindowVisible(true)
+        } else if window === settingsWindow {
+            surfaceVisibility.setCustomSettingsVisible(true)
+        }
+    }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        let isVisible = window.occlusionState.contains(.visible)
+        if window === mainWindow {
+            surfaceVisibility.setMainWindowVisible(isVisible)
+        } else if window === settingsWindow {
+            surfaceVisibility.setCustomSettingsVisible(isVisible)
+        }
     }
 
     func windowDidMove(_ notification: Notification) {
@@ -797,16 +874,26 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
+        popover.delegate = self
         popover.contentSize = NSSize(width: 420, height: 560)
         popover.contentViewController = NSHostingController(
             rootView: LyrisMenuPopoverView(
                 store: store,
+                surfaceVisibility: surfaceVisibility,
                 showMainWindow: { [weak self] in
                     self?.popover.performClose(nil)
                     self?.showMainWindow()
                 }
             )
         )
+    }
+
+    func popoverWillShow(_ notification: Notification) {
+        surfaceVisibility.setPopoverVisible(true)
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        surfaceVisibility.setPopoverVisible(false)
     }
 
     private func configurePointerTrackingFallback() {
@@ -903,6 +990,7 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
     private func updateTopPlayer() {
         let presentationMode = floatingSurfaceModeState.activeMode
         guard presentationMode != .desktopLyrics else {
+            surfaceVisibility.setTopPlayerVisible(false)
             topPanel.orderOut(nil)
             return
         }
@@ -916,6 +1004,7 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
             rootView: LyrisTopPlayerView(
                 store: store,
                 islandModel: islandModel,
+                surfaceVisibility: surfaceVisibility,
                 presentationMode: presentationMode,
                 showMainWindow: { [weak self] in self?.showMainWindow() }
             ),
@@ -940,6 +1029,7 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
         )
         topPanel.contentView = hostingView
         updateTopPlayerFrame(animated: false)
+        surfaceVisibility.setTopPlayerVisible(true)
         topPanel.orderFrontRegardless()
     }
 
@@ -1080,11 +1170,13 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
         topPanel.isMovableByWindowBackground = plan.topPanelIsMovable
 
         guard plan.showsTopPanel else {
+            surfaceVisibility.setTopPlayerVisible(false)
             topPanel.orderOut(nil)
             showMainWindow()
             return
         }
 
+        surfaceVisibility.setMainWindowVisible(false)
         mainWindow.orderOut(nil)
         switch plan.targetIslandState {
         case .compact:
@@ -1096,6 +1188,17 @@ final class LyrisWindowController: NSObject, NSWindowDelegate {
             break
         }
         updateTopPlayer()
+    }
+
+    private func ensureMainWindowContent() {
+        guard !hasInstalledMainWindowContent else { return }
+        mainWindow.contentView = NSHostingView(
+            rootView: LyrisMainWindowView(
+                store: store,
+                surfaceVisibility: surfaceVisibility
+            )
+        )
+        hasInstalledMainWindowContent = true
     }
 
     private func savedFloatingCardOrigin() -> CGPoint? {

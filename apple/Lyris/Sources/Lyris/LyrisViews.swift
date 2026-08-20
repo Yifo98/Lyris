@@ -136,6 +136,7 @@ private struct LyrisTopPlayerBackdrop: View {
     let style: LinkedEffectStyle
     let skin: LyrisInterfaceSkin
     let isPlaying: Bool
+    let isActive: Bool
     let effectSeed: String
     let progress: Double
 
@@ -151,6 +152,8 @@ private struct LyrisTopPlayerBackdrop: View {
                     style: style,
                     skin: skin,
                     isPlaying: isPlaying,
+                    isActive: isActive,
+                    framesPerSecond: isPlaying ? 24 : 8,
                     seed: effectSeed,
                     progress: progress
                 )
@@ -182,6 +185,7 @@ private struct LyrisTopPlayerBackdrop: View {
 struct LyrisTopPlayerView: View {
     @ObservedObject var store: LyrisStore
     @ObservedObject var islandModel: LyrisIslandModel
+    @ObservedObject var surfaceVisibility: LyrisSurfaceVisibility
     let presentationMode: FloatingPresentationMode
     let showMainWindow: () -> Void
 
@@ -231,6 +235,7 @@ struct LyrisTopPlayerView: View {
                         style: store.linkedEffectStyle,
                         skin: store.interfaceSkin,
                         isPlaying: store.playback.isPlaying,
+                        isActive: surfaceVisibility.isTopPlayerVisible,
                         effectSeed: store.playback.track.id,
                         progress: store.progress
                     )
@@ -238,6 +243,8 @@ struct LyrisTopPlayerView: View {
                         style: store.linkedEffectStyle,
                         skin: store.interfaceSkin,
                         isPlaying: store.playback.isPlaying,
+                        isActive: surfaceVisibility.isTopPlayerVisible,
+                        framesPerSecond: store.playback.isPlaying ? 24 : 8,
                         seed: store.playback.track.id,
                         composition: LyrisExpandedIslandEffectPolicy.composition,
                         progress: store.progress
@@ -279,6 +286,7 @@ struct LyrisTopPlayerView: View {
                 style: store.linkedEffectStyle,
                 skin: store.interfaceSkin,
                 isPlaying: store.playback.isPlaying,
+                isActive: surfaceVisibility.isTopPlayerVisible,
                 effectSeed: store.playback.track.id,
                 progress: store.progress
             )
@@ -637,6 +645,7 @@ struct LyrisTopPlayerView: View {
 
 struct LyrisMainWindowView: View {
     @ObservedObject var store: LyrisStore
+    @ObservedObject var surfaceVisibility: LyrisSurfaceVisibility
 
     var body: some View {
         LyrisGlassSurface(
@@ -649,6 +658,8 @@ struct LyrisMainWindowView: View {
                     style: store.linkedEffectStyle,
                     skin: store.interfaceSkin,
                     isPlaying: store.playback.isPlaying,
+                    isActive: surfaceVisibility.isMainWindowVisible,
+                    framesPerSecond: store.playback.isPlaying ? 18 : 8,
                     seed: store.playback.track.id,
                     progress: store.progress
                 )
@@ -657,6 +668,8 @@ struct LyrisMainWindowView: View {
                     style: store.linkedEffectStyle,
                     skin: store.interfaceSkin,
                     isPlaying: store.playback.isPlaying,
+                    isActive: surfaceVisibility.isMainWindowVisible,
+                    framesPerSecond: store.playback.isPlaying ? 18 : 8,
                     seed: store.playback.track.id
                 )
                 .opacity(0.24)
@@ -778,6 +791,7 @@ struct LyrisMainWindowView: View {
                 trackID: store.playback.track.id,
                 progress: store.progress,
                 isPlaying: store.playback.isPlaying,
+                isActive: surfaceVisibility.isMainWindowVisible,
                 accentColor: store.interfaceSkin.accentColor
             )
             .frame(height: 30)
@@ -851,6 +865,7 @@ struct LyrisPresentationModeMenu: View {
 
 struct LyrisMenuPopoverView: View {
     @ObservedObject var store: LyrisStore
+    @ObservedObject var surfaceVisibility: LyrisSurfaceVisibility
     let showMainWindow: () -> Void
 
     var body: some View {
@@ -879,6 +894,7 @@ struct LyrisMenuPopoverView: View {
                         trackID: store.playback.track.id,
                         progress: store.progress,
                         isPlaying: store.playback.isPlaying,
+                        isActive: surfaceVisibility.isPopoverVisible,
                         accentColor: store.interfaceSkin.accentColor
                     )
                     .frame(width: 42, height: 28)

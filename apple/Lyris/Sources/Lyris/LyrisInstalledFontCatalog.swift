@@ -14,12 +14,18 @@ struct LyrisInstalledFontOption: Identifiable, Equatable, Hashable, Sendable {
 }
 
 enum LyrisInstalledFontCatalog {
+    @MainActor private static var cachedSharedOptions: [LyrisInstalledFontOption]?
+
     @MainActor
     static func systemOptions(
         fontManager: NSFontManager = .shared
     ) -> [LyrisInstalledFontOption] {
-        fontManager.availableFontFamilies
-            .compactMap { family in
+        let usesSharedManager = fontManager === NSFontManager.shared
+        if usesSharedManager, let cachedSharedOptions {
+            return cachedSharedOptions
+        }
+        let options: [LyrisInstalledFontOption] = fontManager.availableFontFamilies
+            .compactMap { family -> LyrisInstalledFontOption? in
                 let normalizedFamily = family.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !normalizedFamily.isEmpty else { return nil }
 
@@ -54,6 +60,15 @@ enum LyrisInstalledFontCatalog {
             .sorted {
                 $0.familyName.localizedCaseInsensitiveCompare($1.familyName) == .orderedAscending
             }
+        if usesSharedManager {
+            cachedSharedOptions = options
+        }
+        return options
+    }
+
+    @MainActor
+    static func invalidateSystemOptionsCache() {
+        cachedSharedOptions = nil
     }
 
     static func filteredOptions(

@@ -175,6 +175,7 @@ final class LyrisStore: ObservableObject {
     @Published private(set) var artworkPresentationMode: LyrisArtworkPresentationMode = .staticArtwork
     @Published private(set) var convertsTraditionalChineseToSimplified = true
     @Published private(set) var fontLibraryRevision = 0
+    @Published private(set) var availableTranslationFontOptions: [LyrisInstalledFontOption] = []
     @Published var menuBarLyricMode: MenuBarLyricMode = .translated
     @Published var presentation: WindowPresentation = .card
     @Published var isLocked = false
@@ -289,6 +290,7 @@ final class LyrisStore: ObservableObject {
         )
 
         restorePreferences()
+        refreshAvailableTranslationFonts()
         restoreFirstUseState()
         if firstUseState.isFirstUse {
             presentation = .firstUse
@@ -1435,6 +1437,8 @@ final class LyrisStore: ObservableObject {
             guard let family = registerFont(at: destination) else {
                 throw CocoaError(.fileReadCorruptFile)
             }
+            LyrisInstalledFontCatalog.invalidateSystemOptionsCache()
+            refreshAvailableTranslationFonts()
             updateCustomTranslationFontFamily(family)
             fontLibraryRevision += 1
             configurationStatus = localized(
@@ -1459,10 +1463,6 @@ final class LyrisStore: ObservableObject {
 
     var availableTranslationFontFamilies: [String] {
         availableTranslationFontOptions.map(\.familyName)
-    }
-
-    var availableTranslationFontOptions: [LyrisInstalledFontOption] {
-        LyrisInstalledFontCatalog.systemOptions()
     }
 
     func updateInterfaceSkin(_ skin: LyrisInterfaceSkin) {
@@ -2912,6 +2912,10 @@ final class LyrisStore: ObservableObject {
         for url in urls where ["otf", "ttf", "ttc"].contains(url.pathExtension.lowercased()) {
             _ = registerFont(at: url)
         }
+    }
+
+    private func refreshAvailableTranslationFonts() {
+        availableTranslationFontOptions = LyrisInstalledFontCatalog.systemOptions()
     }
 
     private func registerFont(at url: URL) -> String? {

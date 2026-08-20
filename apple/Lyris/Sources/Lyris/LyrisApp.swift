@@ -5,6 +5,7 @@ import SwiftUI
 final class LyrisRuntime: ObservableObject {
     static let shared = LyrisRuntime()
     @Published var store: LyrisStore?
+    let surfaceVisibility = LyrisSurfaceVisibility()
 
     private init() {}
 }
@@ -106,7 +107,8 @@ final class LyrisAppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = LyrisWindowController(
             store: store,
-            refreshAccountState: refreshAccountState
+            refreshAccountState: refreshAccountState,
+            surfaceVisibility: LyrisRuntime.shared.surfaceVisibility
         )
         self.store = store
         LyrisRuntime.shared.store = store

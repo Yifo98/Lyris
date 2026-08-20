@@ -325,6 +325,34 @@ final class LyrisPresentationTests: XCTestCase {
         )
     }
 
+    func testHiddenSurfacePausesLinkedEffectTimelineRegardlessOfStyle() {
+        XCTAssertTrue(
+            LyrisLinkedEffectMotionPolicy.timelineIsPaused(
+                style: .aurora,
+                isActive: false
+            )
+        )
+        XCTAssertFalse(
+            LyrisLinkedEffectMotionPolicy.timelineIsPaused(
+                style: .aurora,
+                isActive: true
+            )
+        )
+    }
+
+    @MainActor
+    func testSettingsAnimationRemainsActiveUntilEverySettingsSurfaceCloses() {
+        let visibility = LyrisSurfaceVisibility()
+
+        visibility.setCustomSettingsVisible(true)
+        visibility.setSystemSettingsVisible(true)
+        visibility.setCustomSettingsVisible(false)
+        XCTAssertTrue(visibility.isSettingsWindowVisible)
+
+        visibility.setSystemSettingsVisible(false)
+        XCTAssertFalse(visibility.isSettingsWindowVisible)
+    }
+
     func testFetchedTranslationModelsBecomeStablePickerOptions() {
         XCTAssertEqual(
             LyrisTranslationModelSelection.options(
