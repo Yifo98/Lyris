@@ -1,0 +1,37 @@
+apple/Lyris/.build/
+apple/Lyris/.swiftpm/
+/.build/
+LyrisData/Cache/
+LyrisData/Config/
+LyrisData/Lyrics/
+/qa/
+.scratch/
+releases/
+/videos/
+/docs/qa/
+/docs/brand/concepts/
+/docs/competitive-research/dynamic-lyrics/screenshots/
+
+.env
+.env.*
+!.env.example
+
+# Local credentials and exported session data
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+.netrc
+credentials.json
+secrets.json
+cookies.txt
+*.cookies.txt
+
+# Xcode and local IDE state
+DerivedData/
+xcuserdata/
+
+*.log
+.DS_Store
+Thumbs.db
