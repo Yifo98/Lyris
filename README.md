@@ -2,6 +2,22 @@
 
 Lyris is a native macOS Spotify and synchronized-lyrics companion. The repository, Swift package, executable, application bundle, and project-local data directory all use the **Lyris** identity.
 
+[Download Lyris v0.1.0](https://github.com/Yifo98/Lyris/releases/tag/v0.1.0) · Apple Silicon · macOS 13+
+
+## Screenshots
+
+### Mac Dynamic Island
+
+![Lyris Mac Dynamic Island](docs/assets/screenshots/lyris-dynamic-island.png)
+
+### Desktop lyrics
+
+![Lyris desktop lyrics](docs/assets/screenshots/lyris-desktop-lyrics.png)
+
+### Display and interaction settings
+
+![Lyris settings](docs/assets/screenshots/lyris-settings.png)
+
 ## Preserved core
 
 - Spotify PKCE and profile-scoped Keychain credentials
