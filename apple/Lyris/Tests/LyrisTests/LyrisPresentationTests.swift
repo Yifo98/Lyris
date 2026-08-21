@@ -5,6 +5,50 @@ import XCTest
 @testable import Lyris
 
 final class LyrisPresentationTests: XCTestCase {
+    func testVolumeControlAppearsInExpandedLightweightSurfacesOnly() {
+        XCTAssertFalse(
+            LyrisVolumeControlPolicy.isVisible(
+                presentationMode: .topIsland,
+                islandState: .compact
+            )
+        )
+        XCTAssertTrue(
+            LyrisVolumeControlPolicy.isVisible(
+                presentationMode: .topIsland,
+                islandState: .expanded
+            )
+        )
+        XCTAssertTrue(
+            LyrisVolumeControlPolicy.isVisible(
+                presentationMode: .floatingCard,
+                islandState: .expanded
+            )
+        )
+        XCTAssertFalse(
+            LyrisVolumeControlPolicy.isVisible(
+                presentationMode: .desktopLyrics,
+                islandState: .expanded
+            )
+        )
+    }
+
+    func testSettingsWindowUsesNormalApplicationLevel() {
+        XCTAssertEqual(LyrisSettingsWindowPolicy.level, .normal)
+    }
+
+    func testClosingDesktopLyricsFallsBackToTheCompactTopIsland() {
+        XCTAssertEqual(
+            LyrisMainWindowClosePolicy.fallbackMode(afterClosing: .desktopLyrics),
+            .topIsland
+        )
+        XCTAssertNil(
+            LyrisMainWindowClosePolicy.fallbackMode(afterClosing: .topIsland)
+        )
+        XCTAssertNil(
+            LyrisMainWindowClosePolicy.fallbackMode(afterClosing: .floatingCard)
+        )
+    }
+
     @MainActor
     func testCompactIslandHostingViewCapturesClicksAboveTheLyricTray() {
         let hostingView = LyrisIslandHostingView(
@@ -422,6 +466,27 @@ final class LyrisPresentationTests: XCTestCase {
                 progress: 1
             ),
             -100
+        )
+    }
+
+    func testCompactMarqueeKeepsLongLyricEndsInsideProtectedShoulders() {
+        XCTAssertEqual(
+            LyrisSynchronizedMarqueeText.horizontalOffset(
+                contentWidth: 440,
+                containerWidth: 250,
+                progress: 0,
+                contentInset: 17
+            ),
+            17
+        )
+        XCTAssertEqual(
+            LyrisSynchronizedMarqueeText.horizontalOffset(
+                contentWidth: 440,
+                containerWidth: 250,
+                progress: 1,
+                contentInset: 17
+            ),
+            -207
         )
     }
 
@@ -990,6 +1055,8 @@ final class LyrisPresentationTests: XCTestCase {
         XCTAssertEqual(LyrisTopPlayerGeometry.compactShelfDepth, 24)
         XCTAssertEqual(LyrisTopPlayerGeometry.compactLyricShelfWidth, 250)
         XCTAssertEqual(LyrisTopPlayerGeometry.compactLyricFontSize, 11.5)
+        XCTAssertEqual(LyrisTopPlayerGeometry.compactLyricEdgeFadeWidth, 17)
+        XCTAssertEqual(LyrisTopPlayerGeometry.compactLyricSafeWidth, 216)
         XCTAssertEqual(LyrisTopPlayerGeometry.compactEndCapInset, 1)
         XCTAssertEqual(LyrisTopPlayerGeometry.compactShelfShoulderInset, 22)
         XCTAssertEqual(

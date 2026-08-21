@@ -1,5 +1,21 @@
 import SwiftUI
 
+enum LyrisVolumeControlPolicy {
+    static func isVisible(
+        presentationMode: FloatingPresentationMode,
+        islandState: LyrisIslandState
+    ) -> Bool {
+        switch presentationMode {
+        case .topIsland:
+            islandState == .expanded
+        case .floatingCard:
+            true
+        case .desktopLyrics:
+            false
+        }
+    }
+}
+
 private struct LyrisAttachedBarShape: Shape {
     let cameraInset: CGFloat
     let cameraWidth: CGFloat
@@ -393,10 +409,11 @@ struct LyrisTopPlayerView: View {
                 weight: .semibold
             ),
             baseColor: Color.white.opacity(0.52),
-            progressColor: store.interfaceSkin.accentColor.opacity(0.96)
+            progressColor: store.interfaceSkin.accentColor.opacity(0.96),
+            edgeFadeWidth: LyrisTopPlayerGeometry.compactLyricEdgeFadeWidth
         )
         .frame(
-            width: LyrisTopPlayerGeometry.compactLyricShelfWidth - 18,
+            width: LyrisTopPlayerGeometry.compactLyricShelfWidth,
             height: LyrisTopPlayerGeometry.compactShelfDepth,
             alignment: .center
         )
@@ -565,8 +582,15 @@ struct LyrisTopPlayerView: View {
     }
 
     private var expandedControls: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .trailing, spacing: 6) {
             LyrisTransportControls(store: store, compact: true)
+            if LyrisVolumeControlPolicy.isVisible(
+                presentationMode: presentationMode,
+                islandState: .expanded
+            ) {
+                LyrisVolumeControl(store: store, compact: true)
+                    .frame(width: 174)
+            }
             HStack(spacing: 3) {
                 if presentationMode == .topIsland {
                     LyrisIconButton(
@@ -799,19 +823,7 @@ struct LyrisMainWindowView: View {
             LyrisTransportControls(store: store, compact: false)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            HStack(spacing: 18) {
-                Image(systemName: "speaker.wave.2")
-                    .foregroundStyle(LyrisTheme.primaryText)
-                Slider(
-                    value: Binding(
-                        get: { store.playback.volume ?? 0.5 },
-                        set: { store.send(.setVolume($0)) }
-                    ),
-                    in: 0...1
-                )
-                .tint(store.interfaceSkin.accentColor)
-                .disabled(!store.playback.capabilities.contains(.volume))
-            }
+            LyrisVolumeControl(store: store, compact: false)
             Spacer(minLength: 10)
         }
         .padding(.horizontal, 32)
@@ -1116,6 +1128,57 @@ private struct LyrisTransportControls: View {
                     .disabled(!store.playback.capabilities.contains(.repeatMode))
             }
         }
+    }
+}
+
+private struct LyrisVolumeControl: View {
+    @ObservedObject var store: LyrisStore
+    let compact: Bool
+
+    private var supportsVolume: Bool {
+        store.playback.capabilities.contains(.volume)
+    }
+
+    private var currentVolume: Double {
+        min(max(store.playback.volume ?? 0.5, 0), 1)
+    }
+
+    private var speakerSymbol: String {
+        guard supportsVolume else { return "speaker.slash" }
+        switch currentVolume {
+        case ...0.001: return "speaker.slash.fill"
+        case ..<0.34: return "speaker.wave.1.fill"
+        case ..<0.67: return "speaker.wave.2.fill"
+        default: return "speaker.wave.3.fill"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: compact ? 7 : 18) {
+            Image(systemName: speakerSymbol)
+                .font(.system(size: compact ? 11 : 14, weight: .medium))
+                .foregroundStyle(
+                    supportsVolume
+                        ? LyrisTheme.primaryText
+                        : LyrisTheme.tertiaryText
+                )
+                .frame(width: compact ? 15 : 18)
+
+            Slider(
+                value: Binding(
+                    get: { currentVolume },
+                    set: { store.send(.setVolume(min(max($0, 0), 1))) }
+                ),
+                in: 0...1
+            )
+            .controlSize(compact ? .mini : .small)
+            .tint(store.interfaceSkin.accentColor)
+            .disabled(!supportsVolume)
+            .opacity(supportsVolume ? 1 : 0.42)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("音量")
+        .help(supportsVolume ? "调节 Spotify 音量" : "当前播放设备不支持音量调节")
     }
 }
 

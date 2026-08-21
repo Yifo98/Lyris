@@ -34,13 +34,16 @@ Source: user-approved eight-image `Lyris` design drop produced with ChatGPT.
 ### Persistent top player
 
 - One non-activating top-centered dynamic-island surface on the preferred notched screen.
-- Compact state is a 32pt black glance wing attached to the left of the physical camera housing: stacked song title and selected current lyric projection, with no artwork or transport controls. The right side remains clear for system status items.
+- Compact state treats the physical camera housing as part of one continuous hardware-black silhouette. A restrained artwork/title wing sits on the left, a rhythm/effect wing sits on the right, and a centered shallow V-shaped shelf below the camera housing carries the current lyric.
+- The compact lyric shelf uses a protected synchronized marquee: the 250 × 24pt shell stays fixed, while long text travels within a 216pt shoulder-safe region with symmetric 17pt fades and playback-progress-driven end holds.
 - Hover or click expands the same surface into the full player; pointer exit collapses it through the same contour.
-- The mock's wide player is the expanded state, not a literal always-visible screen-width instruction. On the current 1512pt Mac display, expanded width is approximately 880pt; compact visual width is approximately 317pt, including the measured 185 × 32pt camera housing and a 132pt leading glance wing.
+- The mock's wide player is the expanded state, not a literal always-visible screen-width instruction. On the current 1512pt Mac display, the measured camera housing is approximately 185 × 32pt; the compact visual body is approximately 465 × 56pt and its transparent interaction host is approximately 489 × 66pt. The expanded body is 1080 × 164pt on this display.
 - Expanded state is one flat top-attached card, not a center neck joined to a lower capsule. Progress/time live in the left metadata column, liked state sits below artwork, the center is reserved for bilingual lyrics, and transport controls remain right-aligned.
 - The physical camera housing is measured through public `NSScreen` safe-area APIs.
-- Artwork, track/artist, current bilingual lyric, progress/time, compact waveform, shuffle, previous, play/pause, next, and more.
+- Artwork, track/artist, current bilingual lyric, progress/time, compact waveform, shuffle, previous, play/pause, next, volume, and more. Volume remains hidden in the compact hardware-attached state and appears in the expanded Mac Island and Floating Bar.
 - No automatic collapse into edge handles.
+
+Detailed reusable geometry and transition parameters are maintained in [presentation-modes-reference.md](presentation-modes-reference.md).
 
 ### Main window
 

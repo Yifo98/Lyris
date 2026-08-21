@@ -186,6 +186,19 @@ struct LyrisFloatingSurfaceModeState: Equatable {
     }
 }
 
+enum LyrisSettingsWindowPolicy {
+    static let level: NSWindow.Level = .normal
+    static let hidesOnDeactivate = false
+}
+
+enum LyrisMainWindowClosePolicy {
+    static func fallbackMode(
+        afterClosing mode: FloatingPresentationMode
+    ) -> FloatingPresentationMode? {
+        mode == .desktopLyrics ? .topIsland : nil
+    }
+}
+
 struct LyrisHoverDwellTracker: Equatable {
     private var enteredUptime: TimeInterval?
 
@@ -355,6 +368,10 @@ enum LyrisTopPlayerGeometry {
     static let compactShelfDepth: CGFloat = 24
     static let compactLyricShelfWidth: CGFloat = 250
     static let compactLyricFontSize: CGFloat = 11.5
+    static let compactLyricEdgeFadeWidth: CGFloat = 17
+    static var compactLyricSafeWidth: CGFloat {
+        compactLyricShelfWidth - compactLyricEdgeFadeWidth * 2
+    }
     // Keep the antialiased end caps one point inside the SwiftUI clip bounds,
     // so neither side is visually sliced by the host view edge.
     static let compactEndCapInset: CGFloat = 1
@@ -771,8 +788,8 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
             createdWindow.isMovableByWindowBackground = true
             createdWindow.minSize = NSSize(width: 760, height: 520)
             createdWindow.isReleasedWhenClosed = false
-            createdWindow.hidesOnDeactivate = false
-            createdWindow.level = .floating
+            createdWindow.hidesOnDeactivate = LyrisSettingsWindowPolicy.hidesOnDeactivate
+            createdWindow.level = LyrisSettingsWindowPolicy.level
             createdWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             createdWindow.delegate = self
             createdWindow.appearance = NSAppearance(named: .darkAqua)
@@ -798,6 +815,11 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if sender === mainWindow {
             surfaceVisibility.setMainWindowVisible(false)
+            if let fallbackMode = LyrisMainWindowClosePolicy.fallbackMode(
+                afterClosing: floatingSurfaceModeState.activeMode
+            ) {
+                store.updateFloatingPresentationMode(fallbackMode)
+            }
         } else if sender === settingsWindow {
             surfaceVisibility.setCustomSettingsVisible(false)
         }

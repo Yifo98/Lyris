@@ -449,6 +449,10 @@ struct LyrisSettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
+                Text("Client ID 来自这台 Mac 的本地 Lyris 配置，不会打包进 App。重新下载或替换相同 Bundle ID 的 Lyris 时，macOS 会继续恢复这份本机设置。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 HStack {
                     Group {
                         if revealsSpotifyClientID {

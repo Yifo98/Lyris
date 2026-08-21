@@ -102,6 +102,7 @@ struct LyrisSynchronizedMarqueeText: View {
     let font: Font
     let baseColor: Color
     let progressColor: Color
+    var edgeFadeWidth: CGFloat = 0
 
     @State private var contentWidth: CGFloat = 0
 
@@ -110,7 +111,8 @@ struct LyrisSynchronizedMarqueeText: View {
             let horizontalOffset = Self.horizontalOffset(
                 contentWidth: contentWidth,
                 containerWidth: proxy.size.width,
-                progress: progress
+                progress: progress,
+                contentInset: edgeFadeWidth
             )
 
             LyrisProgressiveText(
@@ -133,6 +135,28 @@ struct LyrisSynchronizedMarqueeText: View {
             .frame(maxHeight: .infinity, alignment: .center)
         }
         .clipped()
+        .mask {
+            GeometryReader { proxy in
+                let fadeFraction = min(
+                    max(edgeFadeWidth / max(proxy.size.width, 1), 0),
+                    0.5
+                )
+                if fadeFraction > 0 {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .white, location: fadeFraction),
+                            .init(color: .white, location: 1 - fadeFraction),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                } else {
+                    Rectangle().fill(Color.white)
+                }
+            }
+        }
         .onPreferenceChange(LyrisMeasuredTextWidthKey.self) { contentWidth = $0 }
         .accessibilityLabel(text)
     }
@@ -147,13 +171,19 @@ struct LyrisSynchronizedMarqueeText: View {
     static func horizontalOffset(
         contentWidth: CGFloat,
         containerWidth: CGFloat,
-        progress: Double
+        progress: Double,
+        contentInset: CGFloat = 0
     ) -> CGFloat {
-        let overflow = max(0, contentWidth - containerWidth)
+        let protectedInset = min(
+            max(contentInset, 0),
+            max(containerWidth, 0) / 2
+        )
+        let protectedWidth = max(0, containerWidth - protectedInset * 2)
+        let overflow = max(0, contentWidth - protectedWidth)
         guard overflow > 0 else {
-            return max(0, containerWidth - contentWidth) / 2
+            return protectedInset + max(0, protectedWidth - contentWidth) / 2
         }
-        return -overflow * travelProgress(for: progress)
+        return protectedInset - overflow * travelProgress(for: progress)
     }
 }
 
