@@ -103,6 +103,7 @@ struct LyrisSynchronizedMarqueeText: View {
     let baseColor: Color
     let progressColor: Color
     var edgeFadeWidth: CGFloat = 0
+    var highlightProgress: Double? = nil
 
     @State private var contentWidth: CGFloat = 0
 
@@ -117,7 +118,7 @@ struct LyrisSynchronizedMarqueeText: View {
 
             LyrisProgressiveText(
                 text: text,
-                progress: progress,
+                progress: highlightProgress ?? progress,
                 font: font,
                 baseColor: baseColor,
                 progressColor: progressColor

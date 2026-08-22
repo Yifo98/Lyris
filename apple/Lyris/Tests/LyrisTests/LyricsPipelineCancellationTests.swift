@@ -78,6 +78,38 @@ final class LyricsPipelineCancellationTests: XCTestCase {
         XCTAssertEqual(store.activeLyricProgress, 0.25, accuracy: 0.001)
     }
 
+    func testLineSyncedLyricsHighlightTheWholeLineWhileTimelineStillAdvances() async throws {
+        let playback = TestPlaybackAdapter()
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: LineSyncedLyricsProvider(),
+            translation: ImmediateTranslationAdapter(),
+            vault: EmptyCredentialVault()
+        )
+
+        playback.emit(
+            PlaybackSnapshot(
+                track: Track(
+                    id: "spotify:track:line",
+                    title: "Line",
+                    artist: "Artist",
+                    album: "Album",
+                    duration: 20
+                ),
+                position: 12,
+                isPlaying: true,
+                likedState: .unavailable,
+                isShuffled: false,
+                repeatMode: .off,
+                capabilities: .localCompanion
+            )
+        )
+        try await eventually { store.activeLyric?.original == "Line synced" }
+
+        XCTAssertEqual(store.activeLyricTimelineProgress, 0.5, accuracy: 0.001)
+        XCTAssertEqual(store.activeLyricProgress, 1, accuracy: 0.001)
+    }
+
     func testEmptyProviderResultProducesDedicatedNoLyricsState() async throws {
         let playback = TestPlaybackAdapter()
         let store = makeStore(
@@ -346,6 +378,22 @@ private struct WordSyncedLyricsProvider: LyricsProviding {
                             LyricWord(text: "world", startTime: 12, endTime: 14),
                         ]
                     )
+                ]
+            )
+        )
+    }
+}
+
+private struct LineSyncedLyricsProvider: LyricsProviding {
+    func lyrics(for track: Track) async throws -> LyricsProviderResult {
+        LyricsProviderResult(
+            document: LyricDocument(
+                trackID: track.id,
+                timingLevel: .lineSynced,
+                source: LyricSourceMetadata(sourceID: "fixture:line", provider: "Fixture"),
+                lines: [
+                    LyricLine(startTime: 10, endTime: 14, original: "Line synced"),
+                    LyricLine(startTime: 14, endTime: 18, original: "Next line"),
                 ]
             )
         )

@@ -163,6 +163,7 @@ struct LyrisFloatingSurfaceTransitionPlan: Equatable {
     var showsTopPanel: Bool { mode != .desktopLyrics }
     var showsMainWindow: Bool { mode == .desktopLyrics }
     var topPanelIsMovable: Bool { mode == .floatingCard }
+    var topPanelIsResizable: Bool { mode == .floatingCard }
 
     var targetIslandState: LyrisIslandState? {
         switch mode {
@@ -170,6 +171,29 @@ struct LyrisFloatingSurfaceTransitionPlan: Equatable {
         case .floatingCard: .expanded
         case .desktopLyrics: nil
         }
+    }
+}
+
+enum LyrisFloatingCardSizingPolicy {
+    static let minimumSize = CGSize(width: 760, height: 190)
+    static let preferredSize = CGSize(width: 980, height: 220)
+
+    static func maximumSize(availableSize: CGSize) -> CGSize {
+        CGSize(
+            width: max(minimumSize.width, min(1_200, availableSize.width - 24)),
+            height: max(minimumSize.height, min(320, availableSize.height - 24))
+        )
+    }
+
+    static func clampedSize(
+        _ requestedSize: CGSize,
+        availableSize: CGSize
+    ) -> CGSize {
+        let maximum = maximumSize(availableSize: availableSize)
+        return CGSize(
+            width: min(max(requestedSize.width, minimumSize.width), maximum.width),
+            height: min(max(requestedSize.height, minimumSize.height), maximum.height)
+        )
     }
 }
 
@@ -537,11 +561,24 @@ enum LyrisTopPlayerGeometry {
 
     static func floatingCardFrame(
         metrics: LyrisScreenMetrics,
-        savedOrigin: CGPoint? = nil
+        savedOrigin: CGPoint? = nil,
+        savedSize: CGSize? = nil
     ) -> CGRect {
         let usable = usableFrame(metrics)
-        let width = min(820, max(620, usable.width - horizontalScreenInset * 2))
-        let size = CGSize(width: width, height: bodyHeight)
+        let defaultSize = CGSize(
+            width: min(
+                LyrisFloatingCardSizingPolicy.preferredSize.width,
+                max(
+                    LyrisFloatingCardSizingPolicy.minimumSize.width,
+                    usable.width - horizontalScreenInset * 2
+                )
+            ),
+            height: LyrisFloatingCardSizingPolicy.preferredSize.height
+        )
+        let size = LyrisFloatingCardSizingPolicy.clampedSize(
+            savedSize ?? defaultSize,
+            availableSize: usable.size
+        )
         if let savedOrigin {
             let candidate = CGRect(origin: savedOrigin, size: size)
             if usable.intersection(candidate).width >= min(320, size.width * 0.5),
@@ -660,6 +697,9 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
     private var cancellables = Set<AnyCancellable>()
     private var topPlayerMetrics: LyrisScreenMetrics?
     private weak var topPlayerScreen: NSScreen?
+    #if DEBUG
+    private var qaPopoverWindow: NSWindow?
+    #endif
 
     init(
         store: LyrisStore,
@@ -765,6 +805,35 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
         islandModel.expand()
         updateTopPlayerFrame(for: .expanded, animated: false)
     }
+
+    func showMenuPopoverWindowForQA() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 560),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Lyris 菜单栏播放器 QA"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = NSHostingView(
+            rootView: LyrisMenuPopoverView(
+                store: store,
+                surfaceVisibility: surfaceVisibility,
+                showMainWindow: { [weak self] in self?.showMainWindow() }
+            )
+        )
+        topPanel.orderOut(nil)
+        surfaceVisibility.setTopPlayerVisible(false)
+        surfaceVisibility.setPopoverVisible(true)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        qaPopoverWindow = window
+    }
+
     #endif
 
     private func showSettingsWindow() {
@@ -874,6 +943,21 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
                 forKey: Self.floatingCardOriginYKey
             )
         }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === topPanel,
+              floatingSurfaceModeState.activeMode == .floatingCard,
+              !isApplyingFloatingPresentationMode else { return }
+        UserDefaults.standard.set(
+            Double(window.frame.width),
+            forKey: Self.floatingCardWidthKey
+        )
+        UserDefaults.standard.set(
+            Double(window.frame.height),
+            forKey: Self.floatingCardHeightKey
+        )
     }
 
     private func configureStatusItem() {
@@ -1061,9 +1145,14 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
     ) {
         guard let metrics = topPlayerMetrics else { return }
         if floatingSurfaceModeState.activeMode == .floatingCard {
+            topPanel.minSize = LyrisFloatingCardSizingPolicy.minimumSize
+            topPanel.maxSize = LyrisFloatingCardSizingPolicy.maximumSize(
+                availableSize: metrics.visibleFrame.size
+            )
             let frame = LyrisTopPlayerGeometry.floatingCardFrame(
                 metrics: metrics,
-                savedOrigin: savedFloatingCardOrigin()
+                savedOrigin: savedFloatingCardOrigin(),
+                savedSize: savedFloatingCardSize()
             )
             guard animated, topPanel.isVisible else {
                 topPanel.setFrame(frame, display: true)
@@ -1176,6 +1265,8 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
     private static let settingsWindowFrameAutosaveName = "LyrisSettingsWindowFrame"
     private static let floatingCardOriginXKey = "LyrisFloatingCardOriginX"
     private static let floatingCardOriginYKey = "LyrisFloatingCardOriginY"
+    private static let floatingCardWidthKey = "LyrisFloatingDeckWidth.v2"
+    private static let floatingCardHeightKey = "LyrisFloatingDeckHeight.v2"
 
     private func applyFloatingPresentationMode(
         _ publishedMode: FloatingPresentationMode
@@ -1190,6 +1281,19 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
 
         topPanel.isMovable = plan.topPanelIsMovable
         topPanel.isMovableByWindowBackground = plan.topPanelIsMovable
+        if plan.topPanelIsResizable {
+            topPanel.styleMask.insert(.resizable)
+            topPanel.minSize = LyrisFloatingCardSizingPolicy.minimumSize
+            if let metrics = topPlayerMetrics {
+                topPanel.maxSize = LyrisFloatingCardSizingPolicy.maximumSize(
+                    availableSize: metrics.visibleFrame.size
+                )
+            }
+        } else {
+            topPanel.styleMask.remove(.resizable)
+            topPanel.minSize = NSSize(width: 1, height: 1)
+            topPanel.maxSize = NSSize(width: 10_000, height: 10_000)
+        }
 
         guard plan.showsTopPanel else {
             surfaceVisibility.setTopPlayerVisible(false)
@@ -1230,6 +1334,16 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
         return CGPoint(
             x: defaults.double(forKey: Self.floatingCardOriginXKey),
             y: defaults.double(forKey: Self.floatingCardOriginYKey)
+        )
+    }
+
+    private func savedFloatingCardSize() -> CGSize? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: Self.floatingCardWidthKey) != nil,
+              defaults.object(forKey: Self.floatingCardHeightKey) != nil else { return nil }
+        return CGSize(
+            width: defaults.double(forKey: Self.floatingCardWidthKey),
+            height: defaults.double(forKey: Self.floatingCardHeightKey)
         )
     }
 

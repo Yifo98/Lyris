@@ -104,17 +104,21 @@ On the current built-in display, the result is approximately 1080 × 164pt.
 ### Runtime size and placement
 
 ```text
-minimum width = 620pt
-maximum width = 820pt
-resolved width = clamp(visible screen width - 64pt, 620...820pt)
-height = 132pt
+default size = 980 × 220pt
+minimum size = 760 × 190pt
+maximum width = min(1200pt, visible screen width - 24pt)
+maximum height = min(320pt, visible screen height - 24pt)
 default top gap = 24pt below the visible-frame top
 ```
 
-- Uses a continuous pill radius equal to half the panel height.
+- Uses the selected “Floating Deck” structure: a fixed 28pt continuous radius that never grows into a pill when height changes.
+- Upper tier: 225pt identity region, flexible bilingual lyric stage, and a centered 190pt transport region.
+- Lower tier: fixed 58pt control rail with a 190pt waveform, flexible progress/time, 144pt volume, repeat, presentation mode, and settings.
 - The saved origin is restored only when at least half the panel remains visible.
-- The panel is movable by its background.
-- The expanded control cluster includes the same 174pt compact volume slider as the expanded Mac Island.
+- The panel keeps native border resize behavior while Floating Bar mode is active.
+- Both the saved origin and the user-selected width/height are restored and clamped to the current display.
+- The panel is movable by its background; progress and volume controls retain their own drag gestures.
+- Saved width/height use the v2 Floating Deck keys so an older oversized capsule does not restore into the redesigned surface.
 - On non-notched screens, compact fallback width is 480pt and height is 36pt; Lyris does not imitate a physical notch.
 
 ## 4. Desktop Lyrics
@@ -149,5 +153,7 @@ The settings window is not an always-on-top utility panel. Its visual timelines 
 - Main radii: 20–28pt continuous corners.
 - Accent: selected skin color; default direction is acid aurora green on near-black.
 - Progress track: 4pt with explicit elapsed and total time where space permits.
+- Progress and volume use one theme-colored custom drag control across expanded Island, Floating Bar, Desktop Lyrics, and the menu-bar popover; no transparent native slider or native blue focus ring remains.
+- The menu-bar popover includes the same volume capability gate and control path as the other expanded surfaces.
 - Compact state prioritizes physical integration and glance readability over control density.
 - Expanded and desktop surfaces may expose full controls, context lines, and translation.

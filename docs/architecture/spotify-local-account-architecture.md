@@ -153,6 +153,8 @@ PKCE 与 Secret 只在 code/token exchange 处不同；成功后共用 Token 生
 
 授权状态：disconnected → authorizing → connected / expiringSoon → reauthorizationRequired / failed。`authorizedAt` 只在完整用户授权成功时更新；access-token refresh 不更新。
 
+用户主动重新授权时，runtime 使用新的 Profile UUID 与新的 Keychain account 接收 Refresh Token，不读取或覆盖旧构建留下的 Token。新授权成功后以新 Profile 作为唯一配置；浏览器、回调或持久化失败时恢复旧 Profile。旧 Keychain 条目即使因 ad-hoc 签名变化而无法清理，也不再被新会话引用，不能阻断重新授权。
+
 `invalid_grant`：清内存 Access Token、删除对应 Refresh Token、保留 profile；Secret 模式默认保留 Secret；停止自动刷新并提示重新授权。删除 profile 才同时删除 Token、Secret 和 profile。
 
 ## 错误边界

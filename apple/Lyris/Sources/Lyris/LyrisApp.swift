@@ -118,7 +118,9 @@ final class LyrisAppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if arguments.contains("--qa-static")
             || arguments.contains("--qa-popover")
-            || arguments.contains("--qa-island-expanded") {
+            || arguments.contains("--qa-island-expanded")
+            || arguments.contains("--qa-main-window")
+            || arguments.contains("--qa-popover-window") {
             Task { @MainActor [weak store, weak controller] in
                 try? await Task.sleep(nanoseconds: 350_000_000)
                 if store?.playback.isPlaying == true {
@@ -129,6 +131,12 @@ final class LyrisAppDelegate: NSObject, NSApplicationDelegate {
                 }
                 if arguments.contains("--qa-island-expanded") {
                     controller?.expandTopPlayerForQA()
+                }
+                if arguments.contains("--qa-main-window") {
+                    controller?.showMainWindow()
+                }
+                if arguments.contains("--qa-popover-window") {
+                    controller?.showMenuPopoverWindowForQA()
                 }
             }
         }

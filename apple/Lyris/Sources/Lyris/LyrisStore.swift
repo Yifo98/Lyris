@@ -341,24 +341,27 @@ final class LyrisStore: ObservableObject {
         lyrics.indices.contains(activeLyricIndex) ? lyrics[activeLyricIndex] : nil
     }
 
-    var activeLyricProgress: Double {
-        let lineProgress = LyrisLyricLineProgress.value(
+    var activeLyricTimelineProgress: Double {
+        LyrisLyricLineProgress.value(
             position: playback.position,
             timingDelay: lyricTimingDelay,
             lyrics: lyrics,
             trackDuration: playback.track.duration
         )
-        guard let activeLyric,
-              let sourceLine = presentedLyricDocument?.lines.first(where: {
+    }
+
+    var activeLyricProgress: Double {
+        guard let activeLyric else { return 0 }
+        guard let sourceLine = presentedLyricDocument?.lines.first(where: {
                   $0.id == activeLyric.id
               }) else {
-            return lineProgress
+            return 1
         }
         return LyrisLyricTextProgress.value(
             position: playback.position,
             timingDelay: lyricTimingDelay,
             line: sourceLine,
-            fallback: lineProgress
+            fallback: 1
         )
     }
 
@@ -1740,15 +1743,6 @@ final class LyrisStore: ObservableObject {
                 zh: "请先粘贴 Spotify Client ID。",
                 en: "Paste your Spotify Client ID first."
             )
-            return
-        }
-        do {
-            try spotifyAuthorizer.saveConfiguration(
-                clientID: value,
-                redirectURI: Self.spotifyRedirectURI
-            )
-        } catch {
-            applySpotifyConfigurationFailure(error)
             return
         }
         spotifyClientID = value

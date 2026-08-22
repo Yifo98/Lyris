@@ -5,6 +5,72 @@ import XCTest
 @testable import Lyris
 
 final class LyrisPresentationTests: XCTestCase {
+    func testSelectedFloatingDeckUsesAFixedRadiusAndTwoTierSizing() {
+        XCTAssertEqual(LyrisFloatingDeckLayoutPolicy.cornerRadius, 28)
+        XCTAssertEqual(LyrisFloatingDeckLayoutPolicy.lowerTierHeight, 58)
+        XCTAssertEqual(
+            LyrisFloatingCardSizingPolicy.preferredSize,
+            CGSize(width: 980, height: 220)
+        )
+        XCTAssertEqual(
+            LyrisFloatingCardSizingPolicy.minimumSize,
+            CGSize(width: 760, height: 190)
+        )
+    }
+
+    func testExpandedControlsRespectThePhysicalMenuBarSafeBand() {
+        XCTAssertEqual(
+            LyrisExpandedControlLayoutPolicy.contentTopInset(
+                presentationMode: .topIsland,
+                cameraInset: 32
+            ),
+            32
+        )
+        XCTAssertEqual(
+            LyrisExpandedControlLayoutPolicy.contentTopInset(
+                presentationMode: .floatingCard,
+                cameraInset: 32
+            ),
+            0
+        )
+    }
+
+    func testFloatingCardTransitionEnablesTwoAxisResizeOnlyForTheFloatingBar() {
+        XCTAssertFalse(
+            LyrisFloatingSurfaceTransitionPlan(mode: .topIsland).topPanelIsResizable
+        )
+        XCTAssertTrue(
+            LyrisFloatingSurfaceTransitionPlan(mode: .floatingCard).topPanelIsResizable
+        )
+        XCTAssertFalse(
+            LyrisFloatingSurfaceTransitionPlan(mode: .desktopLyrics).topPanelIsResizable
+        )
+    }
+
+    func testFloatingCardSizeIsClampedWithoutForcingTheDefaultSize() {
+        let available = CGSize(width: 1_400, height: 900)
+        XCTAssertEqual(
+            LyrisFloatingCardSizingPolicy.clampedSize(
+                CGSize(width: 960, height: 220),
+                availableSize: available
+            ),
+            CGSize(width: 960, height: 220)
+        )
+        XCTAssertEqual(
+            LyrisFloatingCardSizingPolicy.clampedSize(
+                CGSize(width: 300, height: 60),
+                availableSize: available
+            ),
+            LyrisFloatingCardSizingPolicy.minimumSize
+        )
+    }
+
+    func testMenuPopoverUsesTheSharedVolumeControl() {
+        XCTAssertTrue(LyrisVolumeControlPolicy.isVisible(on: .menuPopover))
+        XCTAssertTrue(LyrisVolumeControlPolicy.isVisible(on: .desktopLyrics))
+        XCTAssertFalse(LyrisVolumeControlPolicy.isVisible(on: .compactIsland))
+    }
+
     func testVolumeControlAppearsInExpandedLightweightSurfacesOnly() {
         XCTAssertFalse(
             LyrisVolumeControlPolicy.isVisible(

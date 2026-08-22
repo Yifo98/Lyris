@@ -1,19 +1,64 @@
 import SwiftUI
 
+enum LyrisPlayerSurface: Equatable {
+    case compactIsland
+    case expandedIsland
+    case floatingCard
+    case desktopLyrics
+    case menuPopover
+}
+
 enum LyrisVolumeControlPolicy {
+    static func isVisible(on surface: LyrisPlayerSurface) -> Bool {
+        surface != .compactIsland
+    }
+
     static func isVisible(
         presentationMode: FloatingPresentationMode,
         islandState: LyrisIslandState
     ) -> Bool {
         switch presentationMode {
         case .topIsland:
-            islandState == .expanded
+            return isVisible(
+                on: islandState == .expanded ? .expandedIsland : .compactIsland
+            )
         case .floatingCard:
-            true
+            return isVisible(on: .floatingCard)
         case .desktopLyrics:
-            false
+            // The desktop reader inserts its own full-width volume control
+            // directly instead of routing through the lightweight surface.
+            return false
         }
     }
+}
+
+enum LyrisExpandedControlLayoutPolicy {
+    static func contentTopInset(
+        presentationMode: FloatingPresentationMode,
+        cameraInset: CGFloat
+    ) -> CGFloat {
+        presentationMode == .topIsland ? max(0, cameraInset) : 0
+    }
+
+    static func controlsVerticalBias(
+        presentationMode: FloatingPresentationMode
+    ) -> CGFloat {
+        switch presentationMode {
+        case .topIsland: 4
+        case .floatingCard: 0
+        case .desktopLyrics: 0
+        }
+    }
+}
+
+enum LyrisFloatingDeckLayoutPolicy {
+    static let cornerRadius: CGFloat = 28
+    static let lowerTierHeight: CGFloat = 58
+    static let flowThreadOpacity = 0.32
+    static let identityWidth: CGFloat = 225
+    static let transportWidth: CGFloat = 190
+    static let waveformWidth: CGFloat = 190
+    static let volumeWidth: CGFloat = 144
 }
 
 private struct LyrisAttachedBarShape: Shape {
@@ -25,7 +70,10 @@ private struct LyrisAttachedBarShape: Shape {
     func path(in rect: CGRect) -> Path {
         if presentationMode == .floatingCard {
             return RoundedRectangle(
-                cornerRadius: rect.height / 2,
+                cornerRadius: min(
+                    LyrisFloatingDeckLayoutPolicy.cornerRadius,
+                    rect.height / 2
+                ),
                 style: .continuous
             ).path(in: rect)
         }
@@ -265,8 +313,16 @@ struct LyrisTopPlayerView: View {
                         composition: LyrisExpandedIslandEffectPolicy.composition,
                         progress: store.progress
                     )
-                    .opacity(LyrisExpandedIslandEffectPolicy.opacity)
-                    expandedContent
+                    .opacity(
+                        presentationMode == .floatingCard
+                            ? LyrisFloatingDeckLayoutPolicy.flowThreadOpacity
+                            : LyrisExpandedIslandEffectPolicy.opacity
+                    )
+                    if presentationMode == .floatingCard {
+                        floatingDeckContent
+                    } else {
+                        expandedContent
+                    }
                 }
                 .clipShape(shape)
                 .overlay {
@@ -403,14 +459,15 @@ struct LyrisTopPlayerView: View {
     private var compactLyricDisplay: some View {
         LyrisSynchronizedMarqueeText(
             text: compactLyric,
-            progress: store.activeLyricProgress,
+            progress: store.activeLyricTimelineProgress,
             font: store.translationDisplayFont(
                 size: LyrisTopPlayerGeometry.compactLyricFontSize,
                 weight: .semibold
             ),
             baseColor: Color.white.opacity(0.52),
             progressColor: store.interfaceSkin.accentColor.opacity(0.96),
-            edgeFadeWidth: LyrisTopPlayerGeometry.compactLyricEdgeFadeWidth
+            edgeFadeWidth: LyrisTopPlayerGeometry.compactLyricEdgeFadeWidth,
+            highlightProgress: store.activeLyricProgress
         )
         .frame(
             width: LyrisTopPlayerGeometry.compactLyricShelfWidth,
@@ -430,8 +487,201 @@ struct LyrisTopPlayerView: View {
         .opacity(store.linkedEffectStyle == .off ? 0.24 : 0.72)
     }
 
+    private var floatingDeckContent: some View {
+        GeometryReader { proxy in
+            let lowerHeight = min(
+                LyrisFloatingDeckLayoutPolicy.lowerTierHeight,
+                max(52, proxy.size.height * 0.34)
+            )
+            let upperHeight = max(0, proxy.size.height - lowerHeight)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 18) {
+                    floatingDeckIdentity
+                        .frame(width: LyrisFloatingDeckLayoutPolicy.identityWidth)
+
+                    LyrisSoftDivider()
+                        .frame(height: max(72, upperHeight - 30))
+
+                    floatingDeckLyricStage
+                        .frame(maxWidth: .infinity)
+
+                    LyrisSoftDivider()
+                        .frame(height: max(72, upperHeight - 30))
+
+                    LyrisTransportControls(store: store, compact: true)
+                        .frame(
+                            width: LyrisFloatingDeckLayoutPolicy.transportWidth,
+                            alignment: .center
+                        )
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .frame(width: proxy.size.width, height: upperHeight)
+
+                Rectangle()
+                    .fill(LyrisTheme.hairline.opacity(0.72))
+                    .frame(height: 1)
+
+                HStack(spacing: 14) {
+                    LyrisWaveformView(
+                        trackID: "floating-deck:\(store.playback.track.id)",
+                        progress: store.progress,
+                        isPlaying: store.playback.isPlaying,
+                        isActive: surfaceVisibility.isTopPlayerVisible,
+                        accentColor: store.interfaceSkin.accentColor
+                    )
+                    .frame(
+                        width: LyrisFloatingDeckLayoutPolicy.waveformWidth,
+                        height: 24
+                    )
+                    .opacity(store.linkedEffectStyle == .off ? 0.34 : 0.82)
+
+                    LyrisSoftDivider().frame(height: 34)
+
+                    LyrisProgressBar(store: store, showsTime: true)
+                        .frame(maxWidth: .infinity)
+
+                    LyrisSoftDivider().frame(height: 34)
+
+                    LyrisVolumeControl(store: store, compact: true)
+                        .frame(width: LyrisFloatingDeckLayoutPolicy.volumeWidth)
+
+                    floatingDeckUtilities
+                }
+                .padding(.horizontal, 20)
+                .frame(width: proxy.size.width, height: lowerHeight)
+            }
+        }
+    }
+
+    private var floatingDeckIdentity: some View {
+        HStack(spacing: 12) {
+            LyrisPlayerArtworkVisual(
+                store: store,
+                mode: store.artworkPresentationMode
+            )
+            .frame(width: 76, height: 76)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(store.playback.track.title.uppercased())
+                    .font(.system(size: 15, weight: .bold))
+                    .tracking(0.65)
+                    .foregroundStyle(LyrisTheme.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+
+                Text(store.playback.track.artist)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LyrisTheme.secondaryText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 2)
+
+                HStack(spacing: 6) {
+                    LyrisIconButton(
+                        symbol: (store.playback.likedState.displayedValue ?? false)
+                            ? "heart.fill"
+                            : "heart",
+                        active: store.playback.likedState.displayedValue ?? false,
+                        size: 25,
+                        activeColor: store.interfaceSkin.accentColor,
+                        help: "收藏"
+                    ) {
+                        store.handleLikedControlTap()
+                    }
+                    LyrisIconButton(
+                        symbol: store.artworkPresentationMode == .ambientMotion
+                            ? "sparkles"
+                            : "photo",
+                        active: store.artworkPresentationMode == .ambientMotion,
+                        size: 25,
+                        activeColor: store.interfaceSkin.accentColor,
+                        help: "切换封面表现"
+                    ) {
+                        store.updateArtworkPresentationMode(
+                            store.artworkPresentationMode.next
+                        )
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: 84, alignment: .leading)
+        }
+    }
+
+    private var floatingDeckLyricStage: some View {
+        Button(action: showMainWindow) {
+            VStack(spacing: 3) {
+                Text(previousLyric ?? " ")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(LyrisTheme.tertiaryText.opacity(0.86))
+                    .lineLimit(1)
+
+                LyrisSynchronizedMarqueeText(
+                    text: primaryLyric,
+                    progress: store.activeLyricTimelineProgress,
+                    font: .system(size: 21, weight: .semibold),
+                    baseColor: LyrisTheme.secondaryText,
+                    progressColor: store.interfaceSkin.accentColor,
+                    highlightProgress: store.activeLyricProgress
+                )
+                .frame(height: 28)
+                .frame(maxWidth: .infinity)
+
+                if let translation = translationLyric {
+                    LyrisSynchronizedMarqueeText(
+                        text: translation,
+                        progress: store.activeLyricTimelineProgress,
+                        font: store.translationDisplayFont(size: 15, weight: .medium),
+                        baseColor: LyrisTheme.secondaryText.opacity(0.72),
+                        progressColor: LyrisTheme.primaryText.opacity(0.92),
+                        highlightProgress: store.activeLyricProgress
+                    )
+                    .frame(height: 20)
+                    .frame(maxWidth: .infinity)
+                } else {
+                    Text(" ").font(.system(size: 15)).frame(height: 20)
+                }
+
+                Text(nextLyric ?? " ")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(LyrisTheme.tertiaryText.opacity(0.82))
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+    }
+
+    private var floatingDeckUtilities: some View {
+        HStack(spacing: 2) {
+            LyrisIconButton(
+                symbol: store.playback.repeatMode == .one ? "repeat.1" : "repeat",
+                active: store.playback.repeatMode != .off,
+                size: 28,
+                activeColor: store.interfaceSkin.accentColor,
+                help: "循环模式"
+            ) {
+                store.send(.cycleRepeat)
+            }
+            .disabled(!store.playback.capabilities.contains(.repeatMode))
+
+            LyrisPresentationModeMenu(store: store, size: 28)
+
+            LyrisIconButton(symbol: "gearshape", size: 28, help: "设置") {
+                store.showSettings(.appearance)
+            }
+        }
+    }
+
     private var expandedContent: some View {
         GeometryReader { proxy in
+            let topInset = LyrisExpandedControlLayoutPolicy.contentTopInset(
+                presentationMode: presentationMode,
+                cameraInset: islandModel.configuration.cameraInset
+            )
+            let safeHeight = max(0, proxy.size.height - topInset)
             HStack(spacing: 14) {
                 expandedIdentity
                     .frame(width: 240)
@@ -447,10 +697,16 @@ struct LyrisTopPlayerView: View {
 
                 expandedControls
                     .frame(width: 190, alignment: .trailing)
+                    .offset(
+                        y: LyrisExpandedControlLayoutPolicy.controlsVerticalBias(
+                            presentationMode: presentationMode
+                        )
+                    )
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
-            .frame(width: proxy.size.width, height: proxy.size.height)
+            .frame(width: proxy.size.width, height: safeHeight)
+            .offset(y: topInset)
         }
     }
 
@@ -540,10 +796,11 @@ struct LyrisTopPlayerView: View {
 
                     LyrisSynchronizedMarqueeText(
                         text: primaryLyric,
-                        progress: store.activeLyricProgress,
+                        progress: store.activeLyricTimelineProgress,
                         font: .system(size: 24, weight: .semibold),
                         baseColor: LyrisTheme.secondaryText,
-                        progressColor: store.interfaceSkin.accentColor
+                        progressColor: store.interfaceSkin.accentColor,
+                        highlightProgress: store.activeLyricProgress
                     )
                     .frame(height: 31)
                     .frame(maxWidth: .infinity)
@@ -551,10 +808,11 @@ struct LyrisTopPlayerView: View {
                     if let translation = translationLyric {
                         LyrisSynchronizedMarqueeText(
                             text: translation,
-                            progress: store.activeLyricProgress,
+                            progress: store.activeLyricTimelineProgress,
                             font: store.translationDisplayFont(size: 17, weight: .medium),
                             baseColor: LyrisTheme.secondaryText.opacity(0.74),
-                            progressColor: LyrisTheme.primaryText.opacity(0.92)
+                            progressColor: LyrisTheme.primaryText.opacity(0.92),
+                            highlightProgress: store.activeLyricProgress
                         )
                         .frame(height: 22)
                         .frame(maxWidth: .infinity)
@@ -886,18 +1144,18 @@ struct LyrisMenuPopoverView: View {
             shadeOpacity: 0.74,
             skin: store.interfaceSkin
         ) {
-            VStack(spacing: 18) {
-                HStack(spacing: 16) {
+            VStack(spacing: 14) {
+                HStack(spacing: 14) {
                     LyrisArtworkView(url: store.playback.track.artworkURL)
-                        .frame(width: 74, height: 74)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 5) {
                         Text(store.playback.track.title.uppercased())
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(LyrisTheme.primaryText)
                             .lineLimit(1)
                         Text(store.playback.track.artist)
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundStyle(LyrisTheme.secondaryText)
                             .lineLimit(1)
                     }
@@ -909,14 +1167,24 @@ struct LyrisMenuPopoverView: View {
                         isActive: surfaceVisibility.isPopoverVisible,
                         accentColor: store.interfaceSkin.accentColor
                     )
-                    .frame(width: 42, height: 28)
+                    .frame(width: 38, height: 24)
                 }
 
-                LyrisProgressBar(store: store, showsTime: true)
                 Divider().overlay(LyrisTheme.hairline)
 
                 LyrisLyricsListView(store: store, presentation: .popover)
                     .frame(maxHeight: .infinity)
+
+                Divider().overlay(LyrisTheme.hairline)
+
+                HStack(alignment: .center, spacing: 16) {
+                    LyrisProgressBar(store: store, showsTime: true)
+                        .frame(maxWidth: .infinity)
+                    if LyrisVolumeControlPolicy.isVisible(on: .menuPopover) {
+                        LyrisVolumeControl(store: store, compact: true)
+                            .frame(width: 124)
+                    }
+                }
 
                 HStack(spacing: 18) {
                     Color.clear
@@ -929,7 +1197,7 @@ struct LyrisMenuPopoverView: View {
                     }
                 }
             }
-            .padding(24)
+            .padding(20)
         }
         .preferredColorScheme(.dark)
     }
@@ -1134,6 +1402,7 @@ private struct LyrisTransportControls: View {
 private struct LyrisVolumeControl: View {
     @ObservedObject var store: LyrisStore
     let compact: Bool
+    @State private var scrubVolume: Double?
 
     private var supportsVolume: Bool {
         store.playback.capabilities.contains(.volume)
@@ -1164,16 +1433,18 @@ private struct LyrisVolumeControl: View {
                 )
                 .frame(width: compact ? 15 : 18)
 
-            Slider(
-                value: Binding(
-                    get: { currentVolume },
-                    set: { store.send(.setVolume(min(max($0, 0), 1))) }
-                ),
-                in: 0...1
+            LyrisUnitControl(
+                value: scrubVolume ?? currentVolume,
+                skin: store.interfaceSkin,
+                isEnabled: supportsVolume,
+                compact: compact,
+                accessibilityLabel: "音量",
+                onValueChanged: { scrubVolume = $0 },
+                onCommit: { value in
+                    scrubVolume = nil
+                    store.send(.setVolume(value))
+                }
             )
-            .controlSize(compact ? .mini : .small)
-            .tint(store.interfaceSkin.accentColor)
-            .disabled(!supportsVolume)
             .opacity(supportsVolume ? 1 : 0.42)
         }
         .accessibilityElement(children: .contain)
@@ -1190,60 +1461,19 @@ private struct LyrisProgressBar: View {
     var body: some View {
         let progress = min(max(scrubProgress ?? store.progress, 0), 1)
         VStack(spacing: 6) {
-            ZStack {
-                GeometryReader { proxy in
-                    let thumbDiameter = 12.0
-                    let availableWidth = max(0, proxy.size.width - thumbDiameter)
-                    let filledWidth = thumbDiameter / 2 + availableWidth * progress
-
-                    ZStack(alignment: .leading) {
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.14))
-                            .frame(height: 4)
-
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        store.interfaceSkin.accentColor,
-                                        store.interfaceSkin.secondaryAccentColor,
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: max(2, filledWidth), height: 4)
-
-                        Circle()
-                            .fill(Color.white.opacity(0.96))
-                            .frame(width: thumbDiameter, height: thumbDiameter)
-                            .overlay {
-                                Circle()
-                                    .stroke(store.interfaceSkin.accentColor.opacity(0.55), lineWidth: 1)
-                            }
-                            .shadow(color: store.interfaceSkin.accentColor.opacity(0.28), radius: 3)
-                            .offset(x: availableWidth * progress)
-                    }
-                    .frame(maxHeight: .infinity, alignment: .center)
+            LyrisUnitControl(
+                value: progress,
+                skin: store.interfaceSkin,
+                isEnabled: store.playback.capabilities.contains(.seek)
+                    && store.playback.track.duration > 0,
+                compact: false,
+                accessibilityLabel: "歌曲进度",
+                onValueChanged: { scrubProgress = $0 },
+                onCommit: { finalProgress in
+                    store.seek(to: finalProgress * store.playback.track.duration)
+                    scrubProgress = nil
                 }
-
-                Slider(
-                    value: Binding(
-                        get: { progress },
-                        set: { scrubProgress = min(max($0, 0), 1) }
-                    ),
-                    in: 0...1,
-                    onEditingChanged: { isEditing in
-                        guard !isEditing else { return }
-                        let finalProgress = min(max(scrubProgress ?? store.progress, 0), 1)
-                        scrubProgress = nil
-                        store.seek(to: finalProgress * store.playback.track.duration)
-                    }
-                )
-                .controlSize(.small)
-                .opacity(0.015)
-                .accessibilityLabel("歌曲进度")
-            }
+            )
             .frame(height: 16)
 
             if showsTime {
@@ -1255,6 +1485,95 @@ private struct LyrisProgressBar: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(LyrisTheme.secondaryText)
             }
+        }
+    }
+}
+
+private struct LyrisUnitControl: View {
+    let value: Double
+    let skin: LyrisInterfaceSkin
+    let isEnabled: Bool
+    let compact: Bool
+    let accessibilityLabel: String
+    let onValueChanged: (Double) -> Void
+    let onCommit: (Double) -> Void
+
+    private var clampedValue: Double {
+        min(max(value, 0), 1)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let thumbDiameter: CGFloat = compact ? 10 : 12
+            let trackHeight: CGFloat = compact ? 3 : 4
+            let availableWidth = max(0, proxy.size.width - thumbDiameter)
+            let thumbOffset = availableWidth * clampedValue
+            let filledWidth = thumbDiameter / 2 + thumbOffset
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.14))
+                    .frame(height: trackHeight)
+
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                skin.accentColor,
+                                skin.secondaryAccentColor,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(trackHeight, filledWidth), height: trackHeight)
+
+                Circle()
+                    .fill(Color.white.opacity(0.96))
+                    .frame(width: thumbDiameter, height: thumbDiameter)
+                    .overlay {
+                        Circle()
+                            .stroke(skin.accentColor.opacity(0.68), lineWidth: 1)
+                    }
+                    .shadow(color: skin.accentColor.opacity(0.34), radius: 3)
+                    .offset(x: thumbOffset)
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { gesture in
+                        guard isEnabled else { return }
+                        onValueChanged(
+                            LyrisSeekInteraction.normalizedProgress(
+                                x: gesture.location.x,
+                                width: proxy.size.width
+                            )
+                        )
+                    }
+                    .onEnded { gesture in
+                        guard isEnabled else { return }
+                        let committed = LyrisSeekInteraction.normalizedProgress(
+                            x: gesture.location.x,
+                            width: proxy.size.width
+                        )
+                        onValueChanged(committed)
+                        onCommit(committed)
+                    }
+            )
+        }
+        .frame(minHeight: compact ? 12 : 16)
+        .opacity(isEnabled ? 1 : 0.42)
+        .focusable(false)
+        .accessibilityElement()
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue("\(Int((clampedValue * 100).rounded()))%")
+        .accessibilityAdjustableAction { direction in
+            guard isEnabled else { return }
+            let delta = direction == .increment ? 0.05 : -0.05
+            let adjusted = min(max(clampedValue + delta, 0), 1)
+            onValueChanged(adjusted)
+            onCommit(adjusted)
         }
     }
 }

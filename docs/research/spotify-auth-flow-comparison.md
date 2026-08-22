@@ -14,6 +14,8 @@ Spotify 官方明确：桌面应用不能安全保存 Client Secret，应使用 
 
 正式 runtime 当前只支持一个 Spotify Profile：检测到多个 Profile 时会在迁移、恢复、保存和网络请求之前 fail-closed，不按 UUID 隐式选账户。Secret→PKCE 或 Client 身份变更使用补偿式 Refresh Token 恢复而非跨存储原子事务，保存配置绝不读取 Client Secret；若 Profile 已转为 PKCE 后旧 Secret 清理失败，则保持 fail-closed 并要求检查 Keychain，后续每次 PKCE 保存继续重试删除。已授权 PKCE Profile 即使保存同一配置，只要 Secret 清理无法确认，也会先持久阻断会话再报错，避免 cached Access Token 或仍在 Keychain 的 Refresh Token 继续使用。授权完成阶段若 Profile 保存和旧 Refresh Token 恢复连续失败，则返回专门错误并持久阻断会话，残留的新 Token 也不能被重建 Broker 使用。Access Token 缓存同时绑定 Profile ID、Client ID、授权模式与 session fence，身份或 generation 变化不会复用旧会话。配置变更还会将 blocked 状态与 generation 写入同一权威记录，并在每次 Registry 操作前重新载入：飞行中的旧 Refresh 响应不能回写，旧 Broker 或旧授权 completion 不能解除较新的阻断；只有当前 generation 的完整授权成功后才恢复会话。
 
+为兼容每次二进制都会改变访问身份的 ad-hoc 分发，用户主动重新授权不再先读取旧 Refresh Token：runtime 临时以新 UUID 替换 Profile 记录，并将新授权写入新的 Keychain account；成功后保留新 Profile，失败则恢复旧 Profile。旧构建的不可访问 Token 可能作为无引用条目留在 Keychain，但不会再阻断新会话，也不会进入 UserDefaults、日志或安装包。
+
 ## OAuth 共同规则
 
 - Redirect URI 必须精确匹配；loopback 使用 `http://127.0.0.1:PORT` 或 `http://[::1]:PORT`，不能使用 `localhost`。

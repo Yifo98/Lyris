@@ -361,6 +361,7 @@ final class SpotifyAuthorizationRuntime: SpotifyAuthorizing, SpotifyPlaybackAcco
     private let profileStore: any SpotifyAuthorizationProfileStoring
     private let tokenStore: SpotifyTokenStore
     private let coordinator: SpotifyAuthorizationCoordinator
+    private let profileIDGenerator: () -> UUID
     private var didBootstrap = false
     private var lastAuthorizationNotification: AuthorizationNotificationIdentity?
 
@@ -368,13 +369,15 @@ final class SpotifyAuthorizationRuntime: SpotifyAuthorizing, SpotifyPlaybackAcco
         sessionBroker: SpotifySessionBroker,
         credentialVault: CredentialVault,
         defaults: UserDefaults = .standard,
-        profileStore: (any SpotifyAuthorizationProfileStoring)? = nil
+        profileStore: (any SpotifyAuthorizationProfileStoring)? = nil,
+        profileIDGenerator: @escaping () -> UUID = { UUID() }
     ) {
         self.sessionBroker = sessionBroker
         self.defaults = defaults
         let resolvedProfileStore = profileStore
             ?? SpotifyAuthorizationProfileStore(defaults: defaults)
         self.profileStore = resolvedProfileStore
+        self.profileIDGenerator = profileIDGenerator
         tokenStore = SpotifyTokenStore(vault: credentialVault)
         coordinator = SpotifyAuthorizationCoordinator(
             profileStore: resolvedProfileStore,
@@ -490,31 +493,70 @@ final class SpotifyAuthorizationRuntime: SpotifyAuthorizing, SpotifyPlaybackAcco
     }
 
     func authorize(clientID: String, redirectURI: String) async throws -> SpotifyConnectionReport {
-        let profile = try saveConfiguration(clientID: clientID, redirectURI: redirectURI)
+        try bootstrapIfNeeded()
+        let normalizedClientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedClientID.isEmpty else {
+            throw SpotifyAuthorizationCoreError.profileNotFound
+        }
+        let profiles = try profileStore.allProfiles()
+        guard profiles.count <= 1 else {
+            throw SpotifyAuthorizationCoreError.profileSelectionRequired
+        }
+        let rotation = try SpotifyAuthorizationProfileRotation.begin(
+            profileStore: profileStore,
+            previousProfile: profiles.first,
+            clientID: normalizedClientID,
+            redirectURI: redirectURI,
+            idGenerator: profileIDGenerator
+        )
+        let profile = rotation.candidateProfile
         try SpotifyProductAuthorizationPolicy.requireEnabled(profile.authorizationMode)
-        guard let redirect = URL(string: profile.redirectURI), let port = redirect.port else {
-            throw SpotifyAuthorizationError.invalidRedirectURI
-        }
-        let attempt = try coordinator.beginAuthorization(profileID: profile.id)
-        let callbackServer = try SpotifyLoopbackServer(
-            port: UInt16(port),
-            expectedPath: redirect.path
-        )
-        try await callbackServer.start()
+        do {
+            guard let redirect = URL(string: profile.redirectURI), let port = redirect.port else {
+                throw SpotifyAuthorizationError.invalidRedirectURI
+            }
+            let attempt = try coordinator.beginAuthorization(profileID: profile.id)
+            let callbackServer = try SpotifyLoopbackServer(
+                port: UInt16(port),
+                expectedPath: redirect.path
+            )
+            try await callbackServer.start()
 
-        let opened = NSWorkspace.shared.open(attempt.authorizationURL)
-        guard opened else { throw SpotifyAuthorizationError.couldNotOpenBrowser }
+            let opened = NSWorkspace.shared.open(attempt.authorizationURL)
+            guard opened else { throw SpotifyAuthorizationError.couldNotOpenBrowser }
 
-        let callbackURL = try await withTaskCancellationHandler {
-            try await callbackServer.waitForCallback(timeout: 180)
-        } onCancel: {
-            callbackServer.cancel()
+            let callbackURL = try await withTaskCancellationHandler {
+                try await callbackServer.waitForCallback(timeout: 180)
+            } onCancel: {
+                callbackServer.cancel()
+            }
+            let completion = try await coordinator.completeAuthorization(
+                callbackURL: callbackURL,
+                attempt: attempt,
+                refreshCredentialPolicy: .replaceWithoutReadingExisting
+            )
+            let report = try await finishAuthorization(completion)
+            defaults.removeObject(
+                forKey: SpotifyLegacyClientIDProfileMigrator.legacyClientIDKey
+            )
+            return report
+        } catch let authorizationError {
+            var rollbackFailed = false
+            do {
+                try tokenStore.deleteProfileCredentials(for: profile.id)
+            } catch {
+                rollbackFailed = true
+            }
+            do {
+                try rotation.rollback(profileStore: profileStore)
+            } catch {
+                rollbackFailed = true
+            }
+            if rollbackFailed {
+                throw SpotifyAuthorizationCoreError.credentialRollbackFailed
+            }
+            throw authorizationError
         }
-        let completion = try await coordinator.completeAuthorization(
-            callbackURL: callbackURL,
-            attempt: attempt
-        )
-        return try await finishAuthorization(completion)
     }
 
     /// A successful token exchange is the authorization boundary. Account

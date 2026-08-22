@@ -157,7 +157,7 @@ struct LRCLibLyricsProvider: LyricsProviding {
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
         request.setValue(
-            "Lyris/0.1.0 (https://github.com/Yifo98/Lyris)",
+            "Lyris/1.0.0 (https://github.com/Yifo98/Lyris)",
             forHTTPHeaderField: "User-Agent"
         )
         let (data, response) = try await session.data(for: request)

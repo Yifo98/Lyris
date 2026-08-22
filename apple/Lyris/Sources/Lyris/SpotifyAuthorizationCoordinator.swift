@@ -1,5 +1,10 @@
 import Foundation
 
+enum SpotifyRefreshCredentialReplacementPolicy: Equatable, Sendable {
+    case preserveExisting
+    case replaceWithoutReadingExisting
+}
+
 /// Owns the ordinary-profile/Keychain split and routes both authorization
 /// modes through one completion lifecycle. It never accepts a client secret as
 /// part of a Codable profile.
@@ -63,7 +68,8 @@ final class SpotifyAuthorizationCoordinator {
 
     func completeAuthorization(
         callbackURL: URL,
-        attempt: SpotifyAuthorizationAttempt
+        attempt: SpotifyAuthorizationAttempt,
+        refreshCredentialPolicy: SpotifyRefreshCredentialReplacementPolicy = .preserveExisting
     ) async throws -> SpotifyAuthorizationCompletion {
         guard var profile = try profileStore.profile(id: attempt.profileID) else {
             throw SpotifyAuthorizationCoreError.profileNotFound
@@ -92,7 +98,13 @@ final class SpotifyAuthorizationCoordinator {
                 throw SpotifyAuthorizationCoreError.attemptProfileMismatch
             }
             profile = currentProfile
-            let previousRefreshToken = try tokenStore.refreshToken(for: profile.id)
+            let previousRefreshToken: String?
+            switch refreshCredentialPolicy {
+            case .preserveExisting:
+                previousRefreshToken = try tokenStore.refreshToken(for: profile.id)
+            case .replaceWithoutReadingExisting:
+                previousRefreshToken = nil
+            }
             try tokenStore.storeRefreshToken(refreshToken, for: profile.id)
             profile.authorizedAt = now()
             profile.grantedScopes = grant.grantedScopes ?? attempt.requestedScopes

@@ -137,6 +137,71 @@ final class SpotifyAuthModeParityTests: XCTestCase {
         let deletedClientSecret = try tokenStore.clientSecret(for: profile.id)
         XCTAssertNil(deletedClientSecret)
     }
+
+    func testReauthorizationCanReplaceTokenWithoutReadingAnOldBuildCredential() async throws {
+        let profileStore = AuthorizationFakeProfileStore()
+        let vault = AuthorizationReadDeniedCredentialVault()
+        let tokenStore = SpotifyTokenStore(vault: vault)
+        let coordinator = makeCoordinator(profileStore: profileStore, tokenStore: tokenStore)
+        let profile = makePKCEProfile()
+        try coordinator.saveProfile(profile)
+
+        let attempt = try coordinator.beginAuthorization(profileID: profile.id)
+        let completion = try await coordinator.completeAuthorization(
+            callbackURL: try XCTUnwrap(URL(
+                string: "http://127.0.0.1:43821/oauth/callback?code=pkce-code&state=pkce-state"
+            )),
+            attempt: attempt,
+            refreshCredentialPolicy: .replaceWithoutReadingExisting
+        )
+
+        XCTAssertEqual(completion.profile.id, profile.id)
+        XCTAssertEqual(vault.readAccounts, [])
+        XCTAssertEqual(
+            vault.writtenValues[SpotifyCredentialAccount.refreshToken(for: profile.id)],
+            "synthetic-refresh-value"
+        )
+    }
+
+    func testAuthorizationProfileRotationUsesFreshIdentityAndCanRollback() throws {
+        let profileStore = AuthorizationFakeProfileStore()
+        let previous = makePKCEProfile()
+        try profileStore.save(previous)
+        let candidateID = UUID(uuidString: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")!
+
+        let rotation = try SpotifyAuthorizationProfileRotation.begin(
+            profileStore: profileStore,
+            previousProfile: previous,
+            clientID: previous.clientID,
+            redirectURI: previous.redirectURI,
+            idGenerator: { candidateID }
+        )
+
+        let candidate = try XCTUnwrap(profileStore.profile(id: candidateID))
+        XCTAssertNotEqual(candidate.id, previous.id)
+        XCTAssertNil(candidate.authorizedAt)
+        XCTAssertEqual(candidate.grantedScopes, [])
+        XCTAssertEqual(try profileStore.allProfiles(), [candidate])
+
+        try rotation.rollback(profileStore: profileStore)
+        XCTAssertEqual(try profileStore.allProfiles(), [previous])
+    }
+
+    func testFirstAuthorizationFailureKeepsTheNewClientConfiguration() throws {
+        let profileStore = AuthorizationFakeProfileStore()
+        let candidateID = UUID(uuidString: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff")!
+
+        let rotation = try SpotifyAuthorizationProfileRotation.begin(
+            profileStore: profileStore,
+            previousProfile: nil,
+            clientID: "new-client",
+            redirectURI: "http://127.0.0.1:43821/oauth/callback",
+            idGenerator: { candidateID }
+        )
+
+        try rotation.rollback(profileStore: profileStore)
+        XCTAssertEqual(try profileStore.allProfiles(), [rotation.candidateProfile])
+    }
 }
 
 final class AuthorizationFakeProfileStore: SpotifyAuthorizationProfileStoring {
@@ -146,6 +211,22 @@ final class AuthorizationFakeProfileStore: SpotifyAuthorizationProfileStoring {
     func profile(id: UUID) throws -> SpotifyAuthorizationProfile? { profiles[id] }
     func save(_ profile: SpotifyAuthorizationProfile) throws { profiles[profile.id] = profile }
     func delete(id: UUID) throws { profiles.removeValue(forKey: id) }
+}
+
+private final class AuthorizationReadDeniedCredentialVault: CredentialVault {
+    private(set) var readAccounts: [String] = []
+    private(set) var writtenValues: [String: String] = [:]
+
+    func read(account: String) throws -> String? {
+        readAccounts.append(account)
+        throw KeychainError.authorizationRequired
+    }
+
+    func write(_ secret: String, account: String) throws {
+        writtenValues[account] = secret
+    }
+
+    func delete(account: String) throws {}
 }
 
 private func makeCoordinator(

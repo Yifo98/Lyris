@@ -104,7 +104,27 @@ For performance changes, validate the running Release process with repeated CPU/
 
 ## Current checkpoint
 
-- Full package suite: 256 tests, 0 failures.
+- Shared progress and volume controls use explicit drag gestures instead of a nearly transparent native slider.
+- Expanded Island seek moved from 100% to 43% and volume from 50% to 24% in the isolated live QA app.
+- Floating Bar now uses the selected Option 1 “Floating Deck”: fixed 28pt corners, a content-first upper tier, and a 58pt shared control rail.
+- Desktop Lyrics mouse drag moved seek from 43% to 83% in the isolated live QA app.
+- The menu-bar popover includes the shared volume control and no longer instantiates the native slider responsible for the blue focus ring.
+- Expanded Mac Island content now begins below the measured physical menu-bar/camera safe band; the right control cluster is visibly separated from system status items.
+- The menu-bar popover now gives the lyric document the flexible main region. Progress and volume share one compact bottom control band; live QA changed progress from 47% to 77% and volume from 50% to 17%.
+- Floating Deck live QA moved progress to 70% and volume to 30%; its v2 size keys prevent the rejected oversized capsule dimensions from restoring.
+- Full package suite: 265 tests, 0 failures.
 - Release and QA app bundles build successfully.
 - Code signature verification passes for the ad-hoc preview bundle.
 - Public source and Release asset are privacy-scanned before publication.
+
+## Floating Deck Option 1 design QA — 2026-08-22
+
+- Selected reference: `~/.codex/generated_images/01a017a0-5bb3-7891-920a-1eb330245a0c/exec-186317e5-ab1b-4db3-b28c-e83e1a341136.png`.
+- Live implementation: `docs/qa/floating-deck-option1-final-2026-08-22.jpeg`.
+- Same-width comparison: `docs/qa/floating-deck-option1-comparison-2026-08-22.png`.
+- P0: none. The full player hierarchy and all core controls are present.
+- P1: none. The implementation uses the selected fixed-radius two-tier structure instead of a height-derived pill.
+- P2: none. Identity, lyric stage, transport, waveform, progress/time, volume, and utilities preserve the selected visual order and proportions.
+- P3: the live 980 × 220pt surface is slightly flatter than the concept crop after same-width scaling; this is an intentional native-screen adaptation and does not break hierarchy.
+
+final result: passed

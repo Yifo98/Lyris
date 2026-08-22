@@ -125,6 +125,61 @@ final class SpotifyAuthorizationProfileStore: SpotifyAuthorizationProfileStoring
     }
 }
 
+struct SpotifyAuthorizationProfileRotation {
+    let previousProfile: SpotifyAuthorizationProfile?
+    let candidateProfile: SpotifyAuthorizationProfile
+
+    static func begin(
+        profileStore: any SpotifyAuthorizationProfileStoring,
+        previousProfile: SpotifyAuthorizationProfile?,
+        clientID: String,
+        redirectURI: String,
+        idGenerator: () -> UUID = { UUID() }
+    ) throws -> Self {
+        let candidateID = idGenerator()
+        guard candidateID != previousProfile?.id else {
+            throw SpotifyAuthorizationCoreError.attemptProfileMismatch
+        }
+        let candidate = SpotifyAuthorizationProfile(
+            id: candidateID,
+            displayName: previousProfile?.displayName ?? "Spotify",
+            clientID: clientID,
+            authorizationMode: .pkce,
+            redirectURI: redirectURI,
+            authorizedAt: nil,
+            grantedScopes: []
+        )
+
+        if let previousProfile {
+            try profileStore.delete(id: previousProfile.id)
+        }
+        do {
+            try profileStore.save(candidate)
+        } catch {
+            if let previousProfile {
+                do {
+                    try profileStore.save(previousProfile)
+                } catch {
+                    throw SpotifyAuthorizationCoreError.credentialRollbackFailed
+                }
+            }
+            throw error
+        }
+        return Self(
+            previousProfile: previousProfile,
+            candidateProfile: candidate
+        )
+    }
+
+    func rollback(
+        profileStore: any SpotifyAuthorizationProfileStoring
+    ) throws {
+        guard let previousProfile else { return }
+        try profileStore.delete(id: candidateProfile.id)
+        try profileStore.save(previousProfile)
+    }
+}
+
 struct SpotifyLegacyClientIDProfileMigrator {
     static let legacyClientIDKey = "spotifyClientID"
     static let migrationMarkerKey = "spotify.authorizationProfiles.migratedLegacyClientID.v1"
