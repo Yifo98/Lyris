@@ -1373,8 +1373,46 @@ final class LyrisStore: ObservableObject {
 
     func updateInterfaceLanguage(_ language: AppLanguage) {
         interfaceLanguage = language
+        refreshLocalizedInterfaceStatus()
         persistDisplayPreferences()
         persistProjectConfiguration()
+    }
+
+    private func refreshLocalizedInterfaceStatus() {
+        spotifyConnectionStatus = switch spotifyAuthorizationState {
+        case .disconnected:
+            spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? localized(zh: "尚未配置", en: "Not configured")
+                : localized(
+                    zh: "Client ID 已保存 · 尚未授权",
+                    en: "Client ID saved · not authorized"
+                )
+        case .authorizing:
+            localized(zh: "等待浏览器授权…", en: "Waiting for browser authorization…")
+        case .connected:
+            localized(zh: "已连接", en: "Connected")
+        case .expiringSoon:
+            localized(zh: "已连接 · 即将需要续期", en: "Connected · renewal due soon")
+        case .permissionRequired:
+            localized(
+                zh: "Spotify 权限不足 · 请重新授权所需范围",
+                en: "Spotify permission missing · reconnect with required scopes"
+            )
+        case .reauthorizationRequired:
+            localized(zh: "授权已失效 · 请重新授权", en: "Authorization expired · reconnect")
+        case .failed:
+            localized(zh: "连接失败", en: "Connection failed")
+        }
+
+        if let presentation = lyricsPipelineState.presentation(language: interfaceLanguage) {
+            lyricPipelineStatus = presentation.title
+        }
+        // These messages describe completed actions rather than durable state.
+        // Clearing them prevents copy from the previous language lingering
+        // after the user switches the interface language.
+        configurationStatus = nil
+        cacheStatus = nil
+        officialPricingStatus = nil
     }
 
     func updateTranslationTarget(_ target: TranslationTargetLanguage) {

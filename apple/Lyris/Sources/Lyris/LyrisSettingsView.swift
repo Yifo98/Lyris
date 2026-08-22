@@ -11,7 +11,12 @@ struct LyrisSettingsRootView: View {
                     surfaceVisibility: runtime.surfaceVisibility
                 )
             } else {
-                ProgressView("正在载入 Lyris 设置…")
+                ProgressView(
+                    LyrisDisplayPreferences.load(from: .standard).interfaceLanguage.pick(
+                        zh: "正在载入 Lyris 设置…",
+                        en: "Loading Lyris settings…"
+                    )
+                )
                     .frame(width: 680, height: 480)
             }
         }
@@ -73,25 +78,29 @@ struct LyrisSettingsView: View {
 
             TabView(selection: $store.settingsSection) {
                 languagePane
-                    .tabItem { Label("语言", systemImage: "character.book.closed") }
+                    .tabItem {
+                        Label(copy(zh: "语言", en: "Language"), systemImage: "character.book.closed")
+                    }
                     .tag(SettingsSection.language)
                 spotifyPane
                     .tabItem { Label("Spotify", systemImage: "music.note") }
                     .tag(SettingsSection.spotify)
                 translationPane
-                    .tabItem { Label("翻译", systemImage: "character.bubble") }
+                    .tabItem {
+                        Label(copy(zh: "翻译", en: "Translation"), systemImage: "character.bubble")
+                    }
                     .tag(SettingsSection.translation)
                 appearancePane
-                    .tabItem { Label("外观", systemImage: "sparkles") }
+                    .tabItem { Label(copy(zh: "外观", en: "Appearance"), systemImage: "sparkles") }
                     .tag(SettingsSection.appearance)
                 windowPane
-                    .tabItem { Label("显示", systemImage: "rectangle.on.rectangle") }
+                    .tabItem { Label(copy(zh: "显示", en: "Display"), systemImage: "rectangle.on.rectangle") }
                     .tag(SettingsSection.window)
                 usagePane
-                    .tabItem { Label("用量", systemImage: "chart.bar.xaxis") }
+                    .tabItem { Label(copy(zh: "用量", en: "Usage"), systemImage: "chart.bar.xaxis") }
                     .tag(SettingsSection.usage)
                 storagePane
-                    .tabItem { Label("存储", systemImage: "externaldrive") }
+                    .tabItem { Label(copy(zh: "存储", en: "Storage"), systemImage: "externaldrive") }
                     .tag(SettingsSection.storage)
             }
         }
@@ -101,8 +110,8 @@ struct LyrisSettingsView: View {
 
     private var languagePane: some View {
         Form {
-            Section("语言与歌词") {
-                Picker("界面语言", selection: Binding(
+            Section(copy(zh: "语言与歌词", en: "Language & Lyrics")) {
+                Picker(copy(zh: "界面语言", en: "Interface Language"), selection: Binding(
                     get: { store.interfaceLanguage },
                     set: { store.updateInterfaceLanguage($0) }
                 )) {
@@ -111,7 +120,7 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Picker("翻译目标", selection: Binding(
+                Picker(copy(zh: "翻译目标", en: "Translation Target"), selection: Binding(
                     get: { store.translationTarget },
                     set: { store.updateTranslationTarget($0) }
                 )) {
@@ -120,7 +129,7 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Picker("译文字体", selection: Binding(
+                Picker(copy(zh: "译文字体", en: "Translation Font"), selection: Binding(
                     get: { store.translationFont },
                     set: { store.updateTranslationFont($0) }
                 )) {
@@ -130,38 +139,51 @@ struct LyrisSettingsView: View {
                 }
 
                 if store.translationFont == .custom {
-                    LabeledContent("已安装字体") {
+                    LabeledContent(copy(zh: "已安装字体", en: "Installed Font")) {
                         LyrisInstalledFontPicker(
                             selection: Binding(
                                 get: { store.customTranslationFontFamily },
                                 set: { store.updateCustomTranslationFontFamily($0) }
                             ),
                             options: store.availableTranslationFontOptions,
-                            accentColor: store.interfaceSkin.accentColor
+                            accentColor: store.interfaceSkin.accentColor,
+                            language: store.interfaceLanguage
                         )
                     }
                 }
 
                 HStack {
-                    Button("使用系统推荐：\(recommendedFont.displayName)") {
+                    Button(copy(
+                        zh: "使用系统推荐：\(recommendedFont.displayName)",
+                        en: "Use System Recommendation: \(recommendedFont.displayName)"
+                    )) {
                         store.applyRecommendedTranslationFont()
                     }
-                    Button("添加 .ttf / .otf 字体…") {
+                    Button(copy(zh: "添加 .ttf / .otf 字体…", en: "Add .ttf / .otf Font…")) {
                         store.importTranslationFont()
                     }
                 }
 
-                Toggle("繁体中文歌词默认转换为简体", isOn: Binding(
+                Toggle(copy(
+                    zh: "繁体中文歌词默认转换为简体",
+                    en: "Convert Traditional Chinese Lyrics to Simplified"
+                ), isOn: Binding(
                     get: { store.convertsTraditionalChineseToSimplified },
                     set: { store.updateTraditionalChineseConversion($0) }
                 ))
-                Text("原文与目标语言相同时不重复调用翻译；副行会改为显示下一句歌词。")
+                Text(copy(
+                    zh: "原文与目标语言相同时不重复调用翻译；副行会改为显示下一句歌词。",
+                    en: "When the original already matches the target language, Lyris skips translation and shows the next lyric on the secondary line."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Text("界面语言、翻译目标和字体只影响显示，不改变歌词来源。")
+                Text(copy(
+                    zh: "界面语言、翻译目标和字体只影响显示，不改变歌词来源。",
+                    en: "Interface language, translation target, and font affect presentation only; they do not change the lyric source."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -172,8 +194,8 @@ struct LyrisSettingsView: View {
 
     private var appearancePane: some View {
         Form {
-            Section("界面皮肤") {
-                Picker("皮肤", selection: Binding(
+            Section(copy(zh: "界面皮肤", en: "Interface Skin")) {
+                Picker(copy(zh: "皮肤", en: "Skin"), selection: Binding(
                     get: { store.interfaceSkin },
                     set: { store.updateInterfaceSkin($0) }
                 )) {
@@ -219,13 +241,16 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Text("Spotify 官方客户端支持 Canvas，但当前 Web API 与 Web Playback SDK 都未公开 Canvas 视频字段；OAuth 授权也不会增加该字段。Lyris 使用稳定的本机封面呈现，不提供容易造成误解的 Canvas 切换。")
+                Text(copy(
+                    zh: "Spotify 官方客户端支持 Canvas，但当前 Web API 与 Web Playback SDK 都未公开 Canvas 视频字段；OAuth 授权也不会增加该字段。Lyris 使用稳定的本机封面呈现，不提供容易造成误解的 Canvas 切换。",
+                    en: "Spotify's official client supports Canvas, but neither the Web API nor Web Playback SDK exposes Canvas video data. OAuth does not add it. Lyris therefore uses reliable local artwork instead of a misleading Canvas switch."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
-            Section("顶部与氛围") {
-                Picker("呈现模式", selection: Binding(
+            Section(copy(zh: "顶部与氛围", en: "Top Surface & Atmosphere")) {
+                Picker(copy(zh: "呈现模式", en: "Presentation Mode"), selection: Binding(
                     get: { store.floatingPresentationMode },
                     set: { store.updateFloatingPresentationMode($0) }
                 )) {
@@ -238,7 +263,7 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Picker("联动效果", selection: Binding(
+                Picker(copy(zh: "联动效果", en: "Linked Effect"), selection: Binding(
                     get: { store.linkedEffectStyle },
                     set: { store.updateLinkedEffectStyle($0) }
                 )) {
@@ -261,8 +286,8 @@ struct LyrisSettingsView: View {
     private var windowPane: some View {
         Form {
 
-            Section("灵动岛") {
-                Picker("呈现模式", selection: Binding(
+            Section(copy(zh: "灵动岛", en: "Dynamic Island")) {
+                Picker(copy(zh: "呈现模式", en: "Presentation Mode"), selection: Binding(
                     get: { store.floatingPresentationMode },
                     set: { store.updateFloatingPresentationMode($0) }
                 )) {
@@ -275,7 +300,7 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Picker("收起状态歌词", selection: Binding(
+                Picker(copy(zh: "收起状态歌词", en: "Compact Lyric"), selection: Binding(
                     get: { store.menuBarLyricMode },
                     set: { store.updateMenuBarLyricMode($0) }
                 )) {
@@ -284,7 +309,7 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Picker("展开保留时间", selection: Binding(
+                Picker(copy(zh: "展开保留时间", en: "Expanded Hold Time"), selection: Binding(
                     get: { store.macIslandExpandedHoldDuration },
                     set: { store.updateMacIslandExpandedHoldDuration($0) }
                 )) {
@@ -293,7 +318,7 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Picker("展开触发方式", selection: Binding(
+                Picker(copy(zh: "展开触发方式", en: "Expansion Trigger"), selection: Binding(
                     get: { store.macIslandExpansionTrigger },
                     set: { store.updateMacIslandExpansionTrigger($0) }
                 )) {
@@ -304,7 +329,7 @@ struct LyrisSettingsView: View {
 
                 if store.macIslandExpansionTrigger.allowsHover {
                     HStack {
-                        Text("悬停展开延迟")
+                        Text(copy(zh: "悬停展开延迟", en: "Hover Expansion Delay"))
                         Slider(
                             value: Binding(
                                 get: { store.macIslandHoverExpandDelay },
@@ -315,8 +340,11 @@ struct LyrisSettingsView: View {
                         )
                         Text(
                             store.macIslandHoverExpandDelay == 0
-                                ? "立即"
-                                : String(format: "%.1f 秒", store.macIslandHoverExpandDelay)
+                                ? copy(zh: "立即", en: "Now")
+                                : copy(
+                                    zh: String(format: "%.1f 秒", store.macIslandHoverExpandDelay),
+                                    en: String(format: "%.1f s", store.macIslandHoverExpandDelay)
+                                )
                         )
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -335,7 +363,7 @@ struct LyrisSettingsView: View {
                     .foregroundStyle(.secondary)
 
                 HStack {
-                    Text("歌词校准")
+                    Text(copy(zh: "歌词校准", en: "Lyric Calibration"))
                     Slider(
                         value: Binding(
                             get: { store.lyricTimingDelay },
@@ -344,18 +372,27 @@ struct LyrisSettingsView: View {
                         in: -3...3,
                         step: 0.1
                     )
-                    Text(String(format: "%+.1f 秒", store.lyricTimingDelay))
+                    Text(copy(
+                        zh: String(format: "%+.1f 秒", store.lyricTimingDelay),
+                        en: String(format: "%+.1f s", store.lyricTimingDelay)
+                    ))
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .frame(width: 72, alignment: .trailing)
                 }
-                Text("正值让歌词更晚出现，负值让歌词更早出现；调整会同时作用于灵动岛、悬浮条和桌面歌词。")
+                Text(copy(
+                    zh: "正值让歌词更晚出现，负值让歌词更早出现；调整会同时作用于灵动岛、悬浮条和桌面歌词。",
+                    en: "Positive values show lyrics later and negative values show them earlier. The adjustment applies to the Dynamic Island, floating bar, and desktop lyrics."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Text("菜单栏只保留小型 Lyris 入口；歌名与当前歌词由收起状态的灵动岛显示。")
+                Text(copy(
+                    zh: "菜单栏只保留小型 Lyris 入口；歌名与当前歌词由收起状态的灵动岛显示。",
+                    en: "The menu bar keeps a small Lyris entry; the compact Dynamic Island shows the song title and current lyric."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -366,17 +403,26 @@ struct LyrisSettingsView: View {
 
     private var usagePane: some View {
         Form {
-            Section("今日用量") {
-                LabeledContent("翻译服务", value: store.translationProvider.displayName(in: store.interfaceLanguage))
-                LabeledContent("模型", value: store.translationModel)
-                LabeledContent("API 请求", value: "\(store.apiRequestCount)")
-                LabeledContent("已翻译歌词", value: "\(store.translatedLineCount) 行")
-                LabeledContent("估算 Token", value: "\(store.estimatedInputTokenCount + store.estimatedOutputTokenCount)")
-                LabeledContent("预估费用", value: store.estimatedAPICostFormatted)
+            Section(copy(zh: "今日用量", en: "Today's Usage")) {
+                LabeledContent(
+                    copy(zh: "翻译服务", en: "Translation Service"),
+                    value: store.translationProvider.displayName(in: store.interfaceLanguage)
+                )
+                LabeledContent(copy(zh: "模型", en: "Model"), value: store.translationModel)
+                LabeledContent(copy(zh: "API 请求", en: "API Requests"), value: "\(store.apiRequestCount)")
+                LabeledContent(
+                    copy(zh: "已翻译歌词", en: "Translated Lyrics"),
+                    value: copy(zh: "\(store.translatedLineCount) 行", en: "\(store.translatedLineCount) lines")
+                )
+                LabeledContent(
+                    copy(zh: "估算 Token", en: "Estimated Tokens"),
+                    value: "\(store.estimatedInputTokenCount + store.estimatedOutputTokenCount)"
+                )
+                LabeledContent(copy(zh: "预估费用", en: "Estimated Cost"), value: store.estimatedAPICostFormatted)
             }
 
-            Section("价格与币种") {
-                Picker("显示币种", selection: Binding(
+            Section(copy(zh: "价格与币种", en: "Pricing & Currency")) {
+                Picker(copy(zh: "显示币种", en: "Display Currency"), selection: Binding(
                     get: { store.costCurrency },
                     set: { store.updateCostCurrency($0) }
                 )) {
@@ -387,21 +433,24 @@ struct LyrisSettingsView: View {
 
                 if store.costCurrency != .usd {
                     TextField(
-                        "每 1 USD 对应币种数量",
+                        copy(zh: "每 1 USD 对应币种数量", en: "Currency Units per 1 USD"),
                         value: Binding(
                             get: { store.costCurrencyUnitsPerUSD },
                             set: { store.updateCostCurrencyUnitsPerUSD($0) }
                         ),
                         format: .number.precision(.fractionLength(2...6))
                     )
-                    Text("汇率仅用于本机显示，可按当前账单汇率手动修改。")
+                    Text(copy(
+                        zh: "汇率仅用于本机显示，可按当前账单汇率手动修改。",
+                        en: "The exchange rate is used for local display only and can be adjusted to match your bill."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 HStack {
                     TextField(
-                        "输入单价 / 百万 Token",
+                        copy(zh: "输入单价 / 百万 Token", en: "Input Price / Million Tokens"),
                         value: Binding(
                             get: { store.translationInputPriceInSelectedCurrency },
                             set: { store.updateTranslationInputPriceInSelectedCurrency($0) }
@@ -409,7 +458,7 @@ struct LyrisSettingsView: View {
                         format: .number.precision(.fractionLength(0...6))
                     )
                     TextField(
-                        "输出单价 / 百万 Token",
+                        copy(zh: "输出单价 / 百万 Token", en: "Output Price / Million Tokens"),
                         value: Binding(
                             get: { store.translationOutputPriceInSelectedCurrency },
                             set: { store.updateTranslationOutputPriceInSelectedCurrency($0) }
@@ -419,11 +468,17 @@ struct LyrisSettingsView: View {
                 }
 
                 HStack {
-                    Button(store.isRefreshingOfficialPricing ? "正在联网匹配…" : "联网匹配官方参考价") {
+                    Button(
+                        store.isRefreshingOfficialPricing
+                            ? copy(zh: "正在联网匹配…", en: "Fetching Official Price…")
+                            : copy(zh: "联网匹配官方参考价", en: "Fetch Official Reference Price")
+                    ) {
                         store.refreshTranslationPricingFromOfficialSource()
                     }
                     .disabled(store.isRefreshingOfficialPricing)
-                    Button("打开官方价格页") { store.openOfficialTranslationPricing() }
+                    Button(copy(zh: "打开官方价格页", en: "Open Official Pricing")) {
+                        store.openOfficialTranslationPricing()
+                    }
                         .disabled(store.translationPricingReference.sourceURL == nil)
                 }
 
@@ -433,7 +488,10 @@ struct LyrisSettingsView: View {
                         .foregroundStyle(store.interfaceSkin.accentColor)
                 }
 
-                Text("参考价核对日期：\(store.translationPricingReference.verifiedDate)。\(store.translationPricingReference.note)。价格可手动覆盖；费用为本机估算值，不代表服务商正式账单。")
+                Text(copy(
+                    zh: "参考价核对日期：\(store.translationPricingReference.verifiedDate)。\(store.translationPricingReference.note)。价格可手动覆盖；费用为本机估算值，不代表服务商正式账单。",
+                    en: "Reference price checked \(store.translationPricingReference.verifiedDate). \(store.translationPricingReference.note). Prices can be overridden manually; estimates are local and do not represent the provider's final bill."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -444,12 +502,18 @@ struct LyrisSettingsView: View {
 
     private var spotifyPane: some View {
         Form {
-            Section("账户增强") {
-                Text("本机播放不需要账户授权；跨设备播放状态和收藏同步需要 Spotify PKCE。")
+            Section(copy(zh: "账户增强", en: "Account Enhancements")) {
+                Text(copy(
+                    zh: "本机播放不需要账户授权；跨设备播放状态和收藏同步需要 Spotify PKCE。",
+                    en: "Local playback needs no account authorization. Cross-device playback state and Liked Songs sync require Spotify PKCE."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Text("Client ID 来自这台 Mac 的本地 Lyris 配置，不会打包进 App。重新下载或替换相同 Bundle ID 的 Lyris 时，macOS 会继续恢复这份本机设置。")
+                Text(copy(
+                    zh: "Client ID 来自这台 Mac 的本地 Lyris 配置，不会打包进 App。重新下载或替换相同 Bundle ID 的 Lyris 时，macOS 会继续恢复这份本机设置。",
+                    en: "The Client ID comes from this Mac's local Lyris settings and is never bundled in the app. macOS restores it when replacing Lyris with the same bundle identifier."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -470,14 +534,24 @@ struct LyrisSettingsView: View {
                     }
                     .buttonStyle(.borderless)
                     .focusable(false)
-                    .help(revealsSpotifyClientID ? "隐藏 Client ID" : "显示 Client ID")
+                    .help(
+                        revealsSpotifyClientID
+                            ? copy(zh: "隐藏 Client ID", en: "Hide Client ID")
+                            : copy(zh: "显示 Client ID", en: "Show Client ID")
+                    )
                 }
 
-                LabeledContent("连接状态", value: store.spotifyConnectionStatus)
+                LabeledContent(copy(zh: "连接状态", en: "Connection Status"), value: store.spotifyConnectionStatus)
 
                 HStack {
-                    Button("仅保存 Client ID") { store.saveSpotifyConfiguration() }
-                    Button(store.isAuthorizingSpotify ? "取消等待" : "保存并开始授权") {
+                    Button(copy(zh: "仅保存 Client ID", en: "Save Client ID Only")) {
+                        store.saveSpotifyConfiguration()
+                    }
+                    Button(
+                        store.isAuthorizingSpotify
+                            ? copy(zh: "取消等待", en: "Cancel Authorization")
+                            : copy(zh: "保存并开始授权", en: "Save and Authorize")
+                    ) {
                         if store.isAuthorizingSpotify {
                             store.cancelSpotifyAuthorization()
                         } else {
@@ -488,28 +562,42 @@ struct LyrisSettingsView: View {
                 }
             }
 
-            Section("如何获取 Client ID") {
-                Text("1. 打开 Spotify Developer Dashboard，新建或选择一个应用。")
-                Text("2. 在应用设置中加入下面的 Redirect URI，必须逐字一致。")
+            Section(copy(zh: "如何获取 Client ID", en: "How to Get a Client ID")) {
+                Text(copy(
+                    zh: "1. 打开 Spotify Developer Dashboard，新建或选择一个应用。",
+                    en: "1. Open Spotify Developer Dashboard and create or select an app."
+                ))
+                Text(copy(
+                    zh: "2. 在应用设置中加入下面的 Redirect URI，必须逐字一致。",
+                    en: "2. Add the Redirect URI below to the app settings exactly as shown."
+                ))
                 HStack {
                     Text(LyrisStore.spotifyRedirectURI)
                         .font(.system(.callout, design: .monospaced))
                         .textSelection(.enabled)
                     Spacer()
-                    Button("复制") { store.copyRedirectURI() }
+                    Button(copy(zh: "复制", en: "Copy")) { store.copyRedirectURI() }
                 }
-                Text("3. 复制应用的 Client ID，粘贴到上方并开始 PKCE 授权。")
+                Text(copy(
+                    zh: "3. 复制应用的 Client ID，粘贴到上方并开始 PKCE 授权。",
+                    en: "3. Copy the app's Client ID, paste it above, and start PKCE authorization."
+                ))
                 HStack {
-                    Button("打开 Developer Dashboard") { store.openSpotifyDashboard() }
+                    Button(copy(zh: "打开 Developer Dashboard", en: "Open Developer Dashboard")) {
+                        store.openSpotifyDashboard()
+                    }
                     Spacer()
                 }
-                Text("桌面应用无法安全保管 Client Secret。Lyris 使用 Spotify 官方推荐的 PKCE 流程，因此不会要求或保存 Client Secret。")
+                Text(copy(
+                    zh: "桌面应用无法安全保管 Client Secret。Lyris 使用 Spotify 官方推荐的 PKCE 流程，因此不会要求或保存 Client Secret。",
+                    en: "Desktop apps cannot safely keep a Client Secret. Lyris uses Spotify's recommended PKCE flow and never asks for or stores a Client Secret."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             if let status = store.configurationStatus, !status.isEmpty {
-                Section("状态") {
+                Section(copy(zh: "状态", en: "Status")) {
                     Text(status)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -522,8 +610,8 @@ struct LyrisSettingsView: View {
 
     private var translationPane: some View {
         Form {
-            Section("翻译服务") {
-                Picker("服务", selection: Binding(
+            Section(copy(zh: "翻译服务", en: "Translation Service")) {
+                Picker(copy(zh: "服务", en: "Service"), selection: Binding(
                     get: { store.translationProvider },
                     set: { store.updateTranslationProvider($0) }
                 )) {
@@ -541,7 +629,7 @@ struct LyrisSettingsView: View {
                 if LyrisTranslationModelSelection.usesFetchedPicker(
                     available: store.availableTranslationModels
                 ) {
-                    Picker("模型", selection: Binding(
+                    Picker(copy(zh: "模型", en: "Model"), selection: Binding(
                         get: { store.translationModel },
                         set: { store.updateTranslationModelDraft($0) }
                     )) {
@@ -556,16 +644,22 @@ struct LyrisSettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    Text("已从当前翻译服务读取 \(store.availableTranslationModels.count) 个可用模型。")
+                    Text(copy(
+                        zh: "已从当前翻译服务读取 \(store.availableTranslationModels.count) 个可用模型。",
+                        en: "Loaded \(store.availableTranslationModels.count) available models from the current translation service."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    TextField("模型", text: Binding(
+                    TextField(copy(zh: "模型", en: "Model"), text: Binding(
                         get: { store.translationModel },
                         set: { store.updateTranslationModelDraft($0) }
                     ))
                     .textFieldStyle(.roundedBorder)
-                    Text("测试连接后，服务返回的模型会在这里改为下拉选择。")
+                    Text(copy(
+                        zh: "测试连接后，服务返回的模型会在这里改为下拉选择。",
+                        en: "After testing the connection, models returned by the service will appear here as a menu."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -597,18 +691,24 @@ struct LyrisSettingsView: View {
 
                 if store.translationCredentialRequiresAuthorization {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Button("读取本机已保存的 API Key") {
+                        Button(copy(
+                            zh: "读取本机已保存的 API Key",
+                            en: "Read Saved API Key"
+                        )) {
                             store.authorizeSavedTranslationCredential()
                         }
                         .buttonStyle(.bordered)
 
-                        Text("只有点击这里才会请求登录钥匙串权限；请选择“始终允许”，本正式版本后续启动将不再重复询问。")
+                        Text(copy(
+                            zh: "只有点击这里才会请求登录钥匙串权限；请选择“始终允许”，本正式版本后续启动将不再重复询问。",
+                            en: "Keychain access is requested only after you click here. Choose Always Allow so this signed build will not ask again on later launches."
+                        ))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Picker("翻译方式", selection: Binding(
+                Picker(copy(zh: "翻译方式", en: "Translation Style"), selection: Binding(
                     get: { store.translationStyle },
                     set: { store.updateTranslationStyle($0) }
                 )) {
@@ -617,14 +717,20 @@ struct LyrisSettingsView: View {
                     }
                 }
 
-                Toggle("思考模式", isOn: Binding(
+                Toggle(copy(zh: "思考模式", en: "Reasoning Mode"), isOn: Binding(
                     get: { store.translationThinkingEnabled },
                     set: { store.updateTranslationThinkingDraft($0) }
                 ))
 
                 HStack {
-                    Button("保存配置") { store.saveTranslationConfiguration() }
-                    Button(store.isTestingTranslation ? "测试中…" : "测试连接并读取模型") {
+                    Button(copy(zh: "保存配置", en: "Save Configuration")) {
+                        store.saveTranslationConfiguration()
+                    }
+                    Button(
+                        store.isTestingTranslation
+                            ? copy(zh: "测试中…", en: "Testing…")
+                            : copy(zh: "测试连接并读取模型", en: "Test Connection & Load Models")
+                    ) {
                         store.testTranslationConnection()
                     }
                     .buttonStyle(.borderedProminent)
@@ -633,7 +739,7 @@ struct LyrisSettingsView: View {
             }
 
             if let status = store.configurationStatus, !status.isEmpty {
-                Section("状态") {
+                Section(copy(zh: "状态", en: "Status")) {
                     Text(status)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -647,28 +753,41 @@ struct LyrisSettingsView: View {
     private var storagePane: some View {
         Form {
             Section("LyrisData") {
-                LabeledContent("歌词库", value: "\(store.storageUsage.cachedLyricCount) 个文件 · \(store.storageUsage.formattedLyricsBytes)")
-                LabeledContent("封面与网络缓存", value: store.storageUsage.formattedNetworkCacheBytes)
+                LabeledContent(
+                    copy(zh: "歌词库", en: "Lyrics Library"),
+                    value: copy(
+                        zh: "\(store.storageUsage.cachedLyricCount) 个文件 · \(store.storageUsage.formattedLyricsBytes)",
+                        en: "\(store.storageUsage.cachedLyricCount) files · \(store.storageUsage.formattedLyricsBytes)"
+                    )
+                )
+                LabeledContent(
+                    copy(zh: "封面与网络缓存", en: "Artwork & Network Cache"),
+                    value: store.storageUsage.formattedNetworkCacheBytes
+                )
 
                 HStack {
-                    Button("刷新占用") { store.refreshStorageUsage() }
-                    Button("在访达中打开") { store.openLocalDataFolder() }
+                    Button(copy(zh: "刷新占用", en: "Refresh Usage")) { store.refreshStorageUsage() }
+                    Button(copy(zh: "在访达中打开", en: "Open in Finder")) { store.openLocalDataFolder() }
                 }
             }
 
-            Section("分目录管理") {
+            Section(copy(zh: "分目录管理", en: "Folder Management")) {
                 HStack {
-                    Button("打开歌词库") { store.openLyricsFolder() }
-                    Button("清除自动歌词缓存") { store.clearGeneratedLyricsCache() }
+                    Button(copy(zh: "打开歌词库", en: "Open Lyrics Library")) { store.openLyricsFolder() }
+                    Button(copy(zh: "清除自动歌词缓存", en: "Clear Generated Lyrics Cache")) {
+                        store.clearGeneratedLyricsCache()
+                    }
                 }
                 HStack {
-                    Button("打开缓存目录") { store.openCacheFolder() }
-                    Button("清除封面/网络缓存") { store.clearArtworkCache() }
+                    Button(copy(zh: "打开缓存目录", en: "Open Cache Folder")) { store.openCacheFolder() }
+                    Button(copy(zh: "清除封面/网络缓存", en: "Clear Artwork/Network Cache")) {
+                        store.clearArtworkCache()
+                    }
                 }
             }
 
             if let status = store.cacheStatus, !status.isEmpty {
-                Section("状态") {
+                Section(copy(zh: "状态", en: "Status")) {
                     Text(status)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -686,12 +805,17 @@ struct LyrisSettingsView: View {
             availableFamilies: store.availableTranslationFontFamilies
         )
     }
+
+    private func copy(zh: String, en: String) -> String {
+        store.interfaceLanguage.pick(zh: zh, en: en)
+    }
 }
 
 private struct LyrisInstalledFontPicker: View {
     @Binding var selection: String
     let options: [LyrisInstalledFontOption]
     let accentColor: Color
+    let language: AppLanguage
 
     @State private var isPresented = false
     @State private var query = ""
@@ -701,7 +825,7 @@ private struct LyrisInstalledFontPicker: View {
             isPresented = true
         } label: {
             HStack(spacing: 10) {
-                Text(selection.isEmpty ? "请选择字体" : selection)
+                Text(selection.isEmpty ? language.pick(zh: "请选择字体", en: "Choose a Font") : selection)
                     .font(selection.isEmpty ? .body : .custom(selection, size: 13))
                     .foregroundStyle(selection.isEmpty ? .secondary : .primary)
                     .lineLimit(1)
@@ -720,7 +844,7 @@ private struct LyrisInstalledFontPicker: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
-                    TextField("搜索已安装字体", text: $query)
+                    TextField(language.pick(zh: "搜索已安装字体", en: "Search Installed Fonts"), text: $query)
                         .textFieldStyle(.plain)
                 }
                 .padding(.horizontal, 12)
@@ -737,9 +861,12 @@ private struct LyrisInstalledFontPicker: View {
                                 Image(systemName: "text.magnifyingglass")
                                     .font(.title2)
                                     .foregroundStyle(.secondary)
-                                Text("没有匹配字体")
+                                Text(language.pick(zh: "没有匹配字体", en: "No Matching Fonts"))
                                     .font(.headline)
-                                Text("可搜索字体家族名、显示名或 PostScript 名称。")
+                                Text(language.pick(
+                                    zh: "可搜索字体家族名、显示名或 PostScript 名称。",
+                                    en: "Search by font family, display name, or PostScript name."
+                                ))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

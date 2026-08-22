@@ -5,6 +5,28 @@ import XCTest
 @testable import Lyris
 
 final class LyrisPresentationTests: XCTestCase {
+    func testSettingsVisibleCopyIsNotHardCodedToChinese() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let settingsSource = packageRoot
+            .appendingPathComponent("Sources/Lyris/LyrisSettingsView.swift")
+        let source = try String(contentsOf: settingsSource, encoding: .utf8)
+        let hardCodedMarkers = [
+            "Label(\"语言\"",
+            "Section(\"账户增强\"",
+            "LabeledContent(\"连接状态\"",
+            "Button(\"仅保存 Client ID\"",
+            "value: \"尚未配置\"",
+        ]
+
+        for marker in hardCodedMarkers {
+            XCTAssertFalse(source.contains(marker), "Settings copy must follow interfaceLanguage: \(marker)")
+        }
+    }
+
     func testSelectedFloatingDeckUsesAFixedRadiusAndTwoTierSizing() {
         XCTAssertEqual(LyrisFloatingDeckLayoutPolicy.cornerRadius, 28)
         XCTAssertEqual(LyrisFloatingDeckLayoutPolicy.lowerTierHeight, 58)

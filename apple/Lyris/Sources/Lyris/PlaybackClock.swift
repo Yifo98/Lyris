@@ -19,6 +19,7 @@ enum PlaybackClockAdjustment: Equatable, Sendable {
     case smoothed
     case snapped
     case ignoredPendingSeek
+    case ignoredStaleSource
     case unchanged
 }
 
@@ -28,6 +29,8 @@ struct PlaybackClock: Sendable {
         var smoothingFactor: Double = 0.25
         var seekConfirmationWindow: TimeInterval = 1.5
         var seekAcknowledgementTolerance: TimeInterval = 1.5
+        var staleSourcePositionTolerance: TimeInterval = 0.05
+        var staleSourceMinimumLead: TimeInterval = 0.25
     }
 
     private struct Anchor: Sendable {
@@ -36,6 +39,8 @@ struct PlaybackClock: Sendable {
         var duration: TimeInterval
         var isPlaying: Bool
         var monotonicTime: TimeInterval
+        var lastSourcePosition: TimeInterval
+        var lastSourceMonotonicTime: TimeInterval
     }
 
     private struct PendingSeek: Sendable {
@@ -100,7 +105,9 @@ struct PlaybackClock: Sendable {
                 position: normalizedPosition,
                 duration: normalizedDuration,
                 isPlaying: sample.isPlaying,
-                monotonicTime: monotonicTime
+                monotonicTime: monotonicTime,
+                lastSourcePosition: normalizedPosition,
+                lastSourceMonotonicTime: monotonicTime
             )
             pendingSeek = nil
             return .reset
@@ -119,16 +126,44 @@ struct PlaybackClock: Sendable {
         }
 
         if anchor.isPlaying != sample.isPlaying {
-            anchor.position = normalizedPosition
+            let projected = position(at: monotonicTime)
+            let staleTolerance = max(0, configuration.staleSourcePositionTolerance)
+            let minimumLead = max(0, configuration.staleSourceMinimumLead)
+            let sourcePositionIsStillFrozen = abs(
+                normalizedPosition - anchor.lastSourcePosition
+            ) <= staleTolerance
+            let projectedPositionIsAhead = projected - normalizedPosition >= minimumLead
+            anchor.position = sourcePositionIsStillFrozen && projectedPositionIsAhead
+                ? projected
+                : normalizedPosition
             anchor.duration = normalizedDuration
             anchor.isPlaying = sample.isPlaying
             anchor.monotonicTime = monotonicTime
+            anchor.lastSourcePosition = normalizedPosition
+            anchor.lastSourceMonotonicTime = monotonicTime
             self.anchor = anchor
             return .reset
         }
 
         let projected = position(at: monotonicTime)
         let drift = normalizedPosition - projected
+        let sourceDelta = normalizedPosition - anchor.lastSourcePosition
+        let sourceAge = max(0, monotonicTime - anchor.lastSourceMonotonicTime)
+        let staleTolerance = max(0, configuration.staleSourcePositionTolerance)
+        let minimumLead = max(0, configuration.staleSourceMinimumLead)
+        let isFrozenPlayingSource = sample.isPlaying
+            && sourceAge > 0
+            && abs(sourceDelta) <= staleTolerance
+            && projected - normalizedPosition >= minimumLead
+
+        anchor.lastSourcePosition = normalizedPosition
+        anchor.lastSourceMonotonicTime = monotonicTime
+        if isFrozenPlayingSource {
+            anchor.duration = normalizedDuration
+            self.anchor = anchor
+            return .ignoredStaleSource
+        }
+
         anchor.duration = normalizedDuration
         anchor.monotonicTime = monotonicTime
         anchor.isPlaying = sample.isPlaying

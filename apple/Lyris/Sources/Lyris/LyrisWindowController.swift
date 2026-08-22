@@ -751,6 +751,16 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
             }
             .store(in: &cancellables)
 
+        store.$interfaceLanguage
+            .removeDuplicates()
+            .sink { [weak self] language in
+                self?.settingsWindow?.title = language.pick(
+                    zh: "Lyris 设置",
+                    en: "Lyris Settings"
+                )
+            }
+            .store(in: &cancellables)
+
 
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -848,7 +858,10 @@ final class LyrisWindowController: NSObject, NSWindowDelegate, NSPopoverDelegate
                 backing: .buffered,
                 defer: false
             )
-            createdWindow.title = "Lyris 设置"
+            createdWindow.title = store.interfaceLanguage.pick(
+                zh: "Lyris 设置",
+                en: "Lyris Settings"
+            )
             createdWindow.titleVisibility = .hidden
             createdWindow.titlebarAppearsTransparent = true
             createdWindow.titlebarSeparatorStyle = .none

@@ -4,6 +4,18 @@ import XCTest
 
 @MainActor
 final class SpotifyStoreAuthorizationFailureTests: XCTestCase {
+    func testChangingInterfaceLanguageRelocalizesConnectionStatus() throws {
+        let (store, cleanup) = try makeStore(
+            error: SpotifyAuthorizationCoreError.profileSelectionRequired
+        )
+        defer { cleanup() }
+        XCTAssertEqual(store.spotifyConnectionStatus, "尚未配置")
+
+        store.updateInterfaceLanguage(.english)
+
+        XCTAssertEqual(store.spotifyConnectionStatus, "Not configured")
+    }
+
     func testShowSettingsPublishesTheRequestedSectionToTheWindowLayer() throws {
         let (store, cleanup) = try makeStore(
             error: SpotifyAuthorizationCoreError.profileSelectionRequired

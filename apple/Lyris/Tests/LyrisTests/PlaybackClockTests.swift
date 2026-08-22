@@ -50,6 +50,77 @@ final class PlaybackClockTests: XCTestCase {
         XCTAssertEqual(clock.position(at: 2), 20, accuracy: 0.000_1)
     }
 
+    func testRepeatedFrozenPlayingSamplesDoNotPinTheMonotonicClock() {
+        var clock = PlaybackClock()
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0)
+
+        for timestamp in stride(from: 0.75, through: 5.25, by: 0.75) {
+            clock.apply(.source(sample(position: 150, isPlaying: true)), at: timestamp)
+        }
+
+        XCTAssertEqual(clock.position(at: 5.25), 155.25, accuracy: 0.000_1)
+    }
+
+    func testPauseAfterFrozenPlayingSamplesKeepsTheProjectedPosition() {
+        var clock = PlaybackClock()
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0)
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0.75)
+        clock.apply(.source(sample(position: 150, isPlaying: false)), at: 2)
+
+        XCTAssertEqual(clock.position(at: 20), 152, accuracy: 0.000_1)
+    }
+
+    func testResumeAfterFrozenPlayingSamplesContinuesFromTheProjectedPosition() {
+        var clock = PlaybackClock()
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0)
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0.75)
+        clock.apply(.source(sample(position: 150, isPlaying: false)), at: 2)
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 4)
+
+        XCTAssertEqual(clock.position(at: 5), 153, accuracy: 0.000_1)
+    }
+
+    func testExternalSeekAfterFrozenSamplesStillSnapsToTheNewPosition() {
+        var clock = PlaybackClock()
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0)
+        clock.apply(.source(sample(position: 150, isPlaying: true)), at: 0.75)
+
+        XCTAssertEqual(
+            clock.apply(.source(sample(position: 80, isPlaying: true)), at: 1.5),
+            .snapped
+        )
+        XCTAssertEqual(clock.position(at: 1.5), 80, accuracy: 0.000_1)
+    }
+
+    func testTrackChangeAfterFrozenSamplesResetsTheClock() {
+        var clock = PlaybackClock()
+        clock.apply(.source(sample(trackID: "A", position: 150, isPlaying: true)), at: 0)
+        clock.apply(.source(sample(trackID: "A", position: 150, isPlaying: true)), at: 0.75)
+
+        XCTAssertEqual(
+            clock.apply(
+                .source(sample(trackID: "B", position: 4, isPlaying: true)),
+                at: 1.5
+            ),
+            .reset
+        )
+        XCTAssertEqual(clock.position(at: 1.5), 4, accuracy: 0.000_1)
+    }
+
+    func testLongFrozenPlaybackClampsAtTrackDuration() {
+        var clock = PlaybackClock()
+        clock.apply(.source(sample(position: 178, isPlaying: true, duration: 180)), at: 0)
+
+        for timestamp in stride(from: 0.75, through: 60, by: 0.75) {
+            clock.apply(
+                .source(sample(position: 178, isPlaying: true, duration: 180)),
+                at: timestamp
+            )
+        }
+
+        XCTAssertEqual(clock.position(at: 60), 180, accuracy: 0.000_1)
+    }
+
     private func sample(
         trackID: String = "A",
         position: TimeInterval,
