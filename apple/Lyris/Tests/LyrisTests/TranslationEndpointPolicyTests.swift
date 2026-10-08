@@ -14,6 +14,17 @@ final class TranslationEndpointPolicyTests: XCTestCase {
         XCTAssertFalse(TranslationEndpointPolicy.allows(try components("file:///tmp/provider")))
     }
 
+    func testCacheIdentityNormalizesEquivalentURLsWithoutStoringPrivateURLData() {
+        let canonical = TranslationEndpointPolicy.cacheIdentity(for: "https://api.example.com/v1")
+        XCTAssertEqual(canonical, TranslationEndpointPolicy.cacheIdentity(for: " HTTPS://API.EXAMPLE.COM:443/v1/ "))
+        for other in ["https://other.example.com/v1", "https://api.example.com/v2", "https://api.example.com/v1?tenant=two"] {
+            XCTAssertNotEqual(canonical, TranslationEndpointPolicy.cacheIdentity(for: other))
+        }
+        let privateEndpoint = TranslationEndpointPolicy.cacheIdentity(for: "https://api.example.com/v1?key=fixture-secret")
+        XCTAssertEqual(privateEndpoint.count, 64)
+        XCTAssertFalse(privateEndpoint.contains("fixture-secret"))
+    }
+
     private func components(_ value: String) throws -> URLComponents {
         try XCTUnwrap(URLComponents(string: value))
     }

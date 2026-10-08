@@ -1,8 +1,10 @@
 # macOS native rebuild boundary
 
-Updated: 2026-08-17
+Updated: 2026-10-08
 
 ## Current state
+
+macOS is the sole product platform. `apple/Lyris/Package.swift` defines the native app and its macOS 13 minimum deployment target. Playback uses public Apple Events and Spotify Web APIs, credentials use Keychain, and presentation uses SwiftUI/AppKit. There are no Windows application targets, adapters, installers, or build pipelines.
 
 The former MeloFloat presentation shell has been deleted. The executable now mounts the approved Lyris main window, menu-bar popover, and physical-notch island while preserving the trusted playback, lyrics, translation, and authorization core.
 
@@ -21,6 +23,8 @@ The retained source provides five tested capability clusters:
 `LyrisStore.swift`, `LyrisDomain.swift`, `LyrisDisplayPreferences.swift`, and `LyrisAdapters.swift` still contain some presentation-era orchestration alongside trusted behavior. They remain compiled because validated cancellation, authorization, and cache behavior currently crosses those files. The next refactor must extract small playback/lyrics/translation session interfaces before deleting the residual presentation state.
 
 This is a migration seam. New presentation work should consume smaller session interfaces instead of expanding these orchestration types further.
+
+Manual lyric drafts are bound to the track selected when the editor opens. Saving invalidates pending lyric, translation, and retry work; only a successful write for the current editing session can update presentation. Generated translation cache identities include a digest of the normalized service endpoint. Older endpoint-less entries remain available through the explicitly labeled compatible-cache fallback.
 
 ## Next architecture decision
 

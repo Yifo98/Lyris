@@ -287,13 +287,15 @@ struct HTTPTranslationAdapter: TranslationProviding {
     }
 
     private func preferredModel(for provider: TranslationProvider, in models: [String], fallback: String) -> String {
+        let selected = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+        if models.contains(selected) { return selected }
         let priorities: [String] = switch provider {
-        case .deepSeek: ["deepseek-v4-flash", "deepseek-v4-pro"]
+        case .deepSeek: ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"]
         case .openAI: ["gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini"]
         case .deepL: []
         case .custom: [fallback]
         }
-        return priorities.first(where: { models.contains($0) }) ?? (models.contains(fallback) ? fallback : models[0])
+        return priorities.first(where: { models.contains($0) }) ?? models[0]
     }
 
     private func elapsedMilliseconds(since instant: ContinuousClock.Instant) -> Int {
@@ -690,7 +692,7 @@ final class SpotifyLoopbackServer: @unchecked Sendable {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 self.readyContinuation = continuation
-                self.listener.stateUpdateHandler = { [weak self] state in
+                self.listener.stateUpdateHandler = { [weak self = self] state in
                     guard let self else { return }
                     switch state {
                     case .ready:
@@ -704,7 +706,7 @@ final class SpotifyLoopbackServer: @unchecked Sendable {
                         break
                     }
                 }
-                self.listener.newConnectionHandler = { [weak self] connection in self?.receive(connection) }
+                self.listener.newConnectionHandler = { [weak self = self] connection in self?.receive(connection) }
                 self.listener.start(queue: self.queue)
             }
         }
@@ -719,7 +721,7 @@ final class SpotifyLoopbackServer: @unchecked Sendable {
                     return
                 }
                 self.callbackContinuation = continuation
-                self.queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+                self.queue.asyncAfter(deadline: .now() + timeout) { [weak self = self] in
                     self?.finish(throwing: SpotifyAuthorizationError.timedOut)
                 }
             }

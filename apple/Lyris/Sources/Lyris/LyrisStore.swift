@@ -218,6 +218,7 @@ final class LyrisStore: ObservableObject {
     private let translationOverrideCoordinator: UserTranslationOverrideCoordinator
     private let asyncTranslationCoordinator = AsyncTranslationCoordinator()
     private let defaults: UserDefaults
+    private let configurationWriter: (NonSecretConfigurationSnapshot) -> Void
     private let lyricsRetryMinimumDelay: TimeInterval
     private var spotifyAuthorizationTask: Task<Void, Never>?
     private var spotifyRestoreTask: Task<Void, Never>?
@@ -241,6 +242,9 @@ final class LyrisStore: ObservableObject {
     private var lrcAlertSequence: UInt64 = 0
     private var pendingLRCExport: PendingLRCExport?
     private var pendingLRCExportEstimation: PendingLRCExportEstimation?
+    private var manualLyricsEditingTrack: Track?
+    private var manualLyricsEditGeneration: UInt64 = 0
+    private var manualLyricsSaveInProgress = false
 
     private static let firstUseStateKey = "firstUseFlowState.v1"
 
@@ -258,7 +262,8 @@ final class LyrisStore: ObservableObject {
         lyricsCacheStore: LyricsCaching = LyricsDiskCache(),
         translationOverrideStore: UserTranslationOverrideStoring = UserTranslationOverrideDiskStore(),
         defaults: UserDefaults = .standard,
-        lyricsRetryMinimumDelay: TimeInterval = 1
+        lyricsRetryMinimumDelay: TimeInterval = 1,
+        configurationWriter: @escaping (NonSecretConfigurationSnapshot) -> Void = LyrisDataLocation.writeConfiguration
     ) {
         self.playbackAdapter = playbackAdapter
         self.lyricsProvider = lyricsProvider
@@ -270,6 +275,7 @@ final class LyrisStore: ObservableObject {
             store: translationOverrideStore
         )
         self.defaults = defaults
+        self.configurationWriter = configurationWriter
         self.lyricsRetryMinimumDelay = max(0, lyricsRetryMinimumDelay)
         let initialLanguage = LyrisDisplayPreferences.load(from: defaults).interfaceLanguage
         playback = PlaybackSnapshot(
@@ -659,6 +665,8 @@ final class LyrisStore: ObservableObject {
     }
 
     func showManualLyricsEditor() {
+        manualLyricsEditingTrack = playback.track
+        manualLyricsEditGeneration &+= 1
         manualLyricsDraft = lyrics.map { line in
             let minutes = Int(line.startTime) / 60
             let seconds = line.startTime - Double(minutes * 60)
@@ -888,15 +896,14 @@ final class LyrisStore: ObservableObject {
             )
             return
         }
-        lyricLoadTask?.cancel()
-        lyricLoadTask = nil
-        lyricLoadGeneration &+= 1
+        cancelLyricsLoad()
         lyrics = importedLyrics
         rememberPresentedLyrics(
             importedLyrics,
             trackID: expectedTrack.id,
             sourceDocument: document
         )
+        markLyricsReady(trackID: expectedTrack.id, document: document, origin: .userLocal)
         lyricCache.removeAll()
         lyricPipelineStatus = localized(zh: "用户歌词 · LRC 导入", en: "User lyrics · LRC import")
         cacheStatus = localized(
@@ -1155,16 +1162,25 @@ final class LyrisStore: ObservableObject {
     }
 
     private func persistManualLyrics(mode: ManualLyricsParsingMode) {
-        guard playback.track.id != "spotify:idle" else {
+        guard playback.track.id != "spotify:idle", playback.track.id != "loading" else {
             cacheStatus = localized(
                 zh: "Spotify 当前没有可关联的歌曲。",
                 en: "Spotify has no current track to associate with these lyrics."
             )
             return
         }
+        guard let expectedTrack = manualLyricsEditingTrack,
+              expectedTrack.id == playback.track.id else {
+            cacheStatus = localized(
+                zh: "歌曲已经切换，草稿仍保留。请切回编辑时的歌曲再保存，或重新打开编辑器。",
+                en: "The track changed; your draft was kept. Return to the original track to save it, or reopen the editor."
+            )
+            return
+        }
+        guard !manualLyricsSaveInProgress else { return }
         let result = ManualLyricsParser.parse(
             manualLyricsDraft,
-            duration: playback.track.duration,
+            duration: expectedTrack.duration,
             mode: mode
         )
         if !result.issues.isEmpty {
@@ -1191,33 +1207,52 @@ final class LyrisStore: ObservableObject {
             return
         }
         let parsed = result.lyrics
-        lyrics = parsed
-        rememberPresentedLyrics(parsed, trackID: playback.track.id)
-        lyricCache.removeAll()
-        lyricPipelineStatus = localized(zh: "用户歌词 · 已保存", en: "User lyrics · saved")
+        cancelLyricsLoad()
+        let generation = lyricLoadGeneration
+        let editGeneration = manualLyricsEditGeneration
+        manualLyricsSaveInProgress = true
+        cacheStatus = localized(zh: "正在保存用户歌词…", en: "Saving user lyrics…")
+        let document = LyricDocument(
+            trackID: expectedTrack.id,
+            sourceID: "lyris:manual",
+            provider: "User",
+            timedLyrics: parsed
+        )
         let entry = LyricsCacheEntry(
-            trackID: playback.track.id,
-            trackTitle: playback.track.title,
-            artist: playback.track.artist,
-            trackDuration: playback.track.duration,
+            trackID: expectedTrack.id,
+            trackTitle: expectedTrack.title,
+            artist: expectedTrack.artist,
+            trackDuration: expectedTrack.duration,
             savedAt: Date(),
             source: .manual,
-            lyrics: parsed
+            lyrics: parsed,
+            document: document
         )
         Task {
+            defer { manualLyricsSaveInProgress = false }
             do {
                 try await lyricsCacheStore.save(entry)
+                refreshStorageUsage()
+                guard isCurrentLyricsLoad(trackID: expectedTrack.id, generation: generation),
+                      manualLyricsEditGeneration == editGeneration else { return }
+                lyrics = parsed
+                rememberPresentedLyrics(parsed, trackID: expectedTrack.id, sourceDocument: document)
+                markLyricsReady(trackID: expectedTrack.id, document: document, origin: .userLocal)
+                lyricCache.removeAll()
+                lyricPipelineStatus = localized(zh: "用户歌词 · 已保存", en: "User lyrics · saved")
                 cacheStatus = localized(
                     zh: "用户歌词已保存到 LyrisData/Lyrics/manual。",
                     en: "User lyrics were saved to LyrisData/Lyrics/manual."
                 )
-                refreshStorageUsage()
                 presentation = .card
             } catch {
+                guard isCurrentLyricsLoad(trackID: expectedTrack.id, generation: generation),
+                      manualLyricsEditGeneration == editGeneration else { return }
                 cacheStatus = localized(
                     zh: "用户歌词保存失败：\(error.localizedDescription)",
                     en: "Could not save user lyrics: \(error.localizedDescription)"
                 )
+                startLyricsLoad(for: playback.track)
             }
         }
     }
@@ -2273,21 +2308,18 @@ final class LyrisStore: ObservableObject {
             thinkingEnabled: context.thinkingEnabled,
             promptVersion: LyricsTranslationPrompt.version(for: context.translationStyle),
             schemaVersion: LyricsCacheFingerprint.currentSchemaVersion,
-            appVersion: Self.lyricsCacheAppVersion
+            appVersion: Self.lyricsCacheAppVersion,
+            endpointIdentity: TranslationEndpointPolicy.cacheIdentity(for: context.baseURL)
         )
     }
 
     private func startLyricsLoad(for track: Track) {
-        cancelScheduledLyricsRetry()
-        asyncTranslationCoordinator.cancel()
-        lyricLoadTask?.cancel()
-        lyricLoadGeneration &+= 1
+        cancelLyricsLoad()
         let generation = lyricLoadGeneration
         guard track.id != "spotify:idle" else {
             lyrics = []
             lyricPipelineStatus = nil
             lyricsPipelineState = .idle
-            lyricLoadTask = nil
             return
         }
         lyricsPipelineState = .loading(trackID: track.id)
@@ -2307,6 +2339,14 @@ final class LyrisStore: ObservableObject {
                 lyricLoadTask = nil
             }
         }
+    }
+
+    private func cancelLyricsLoad() {
+        cancelScheduledLyricsRetry()
+        asyncTranslationCoordinator.cancel()
+        lyricLoadTask?.cancel()
+        lyricLoadTask = nil
+        lyricLoadGeneration &+= 1
     }
 
     private func restartLyricsForConfigurationChange() {
@@ -2406,10 +2446,7 @@ final class LyrisStore: ObservableObject {
 
     private func invalidatePendingTranslationConfiguration() {
         cancelTranslationTest()
-        asyncTranslationCoordinator.cancel()
-        lyricLoadTask?.cancel()
-        lyricLoadTask = nil
-        lyricLoadGeneration &+= 1
+        cancelLyricsLoad()
         isTranslationConnected = false
     }
 
@@ -2558,7 +2595,8 @@ final class LyrisStore: ObservableObject {
                 thinkingEnabled: context.thinkingEnabled,
                 promptVersion: LyricsTranslationPrompt.version(for: context.translationStyle),
                 schemaVersion: LyricsCacheFingerprint.currentSchemaVersion,
-                appVersion: Self.lyricsCacheAppVersion
+                appVersion: Self.lyricsCacheAppVersion,
+                endpointIdentity: TranslationEndpointPolicy.cacheIdentity(for: context.baseURL)
             )
 
             if let persisted = await lyricsCacheStore.loadGenerated(fingerprint: fingerprint),
@@ -2912,7 +2950,7 @@ final class LyrisStore: ObservableObject {
             defaults.string(forKey: "translationPricingProvider") == translationProvider.rawValue
             && defaults.string(forKey: "translationPricingModel") == translationModel
             && defaults.string(forKey: "translationPricingCatalogRevision")
-                == TranslationPricingCatalog.revision
+                == TranslationPricingCatalog.revision(for: translationProvider)
         if pricingMatchesConfiguration,
            defaults.object(forKey: "translationInputPriceUSDPerMillion") != nil,
            defaults.object(forKey: "translationOutputPriceUSDPerMillion") != nil {
@@ -3121,7 +3159,7 @@ final class LyrisStore: ObservableObject {
         defaults.set(translationProvider.rawValue, forKey: "translationPricingProvider")
         defaults.set(translationModel, forKey: "translationPricingModel")
         defaults.set(
-            TranslationPricingCatalog.revision,
+            TranslationPricingCatalog.revision(for: translationProvider),
             forKey: "translationPricingCatalogRevision"
         )
     }
@@ -3144,7 +3182,7 @@ final class LyrisStore: ObservableObject {
     }
 
     private func persistProjectConfiguration() {
-        LyrisDataLocation.writeConfiguration(
+        configurationWriter(
             NonSecretConfigurationSnapshot(
                 hasSpotifyClientID: !spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 interfaceLanguage: interfaceLanguage.rawValue,
@@ -3498,8 +3536,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .language: language.pick(zh: "切换界面语言、翻译目标语言和译文字体。", en: "Choose the interface language, translation target, and lyric font.")
         case .spotify: language.pick(
-            zh: "本地模式只读取当前 Mac；Windows、手机等其他设备播放与收藏同步需要账户授权。",
-            en: "Local mode reads this Mac only; Windows/mobile playback and Liked Songs sync require account authorization."
+            zh: "本地模式只读取当前 Mac；其他设备的播放与收藏同步需要账户授权。",
+            en: "Local mode reads this Mac only; playback on other devices and Liked Songs sync require account authorization."
         )
         case .translation: language.pick(zh: "配置低延迟翻译模型与安全保存的 API Key。", en: "Configure a low-latency translation model and securely stored API key.")
         case .appearance: language.pick(zh: "选择悬浮卡片或顶部灵动岛，并设置边框、波形和进度的联动质感。", en: "Choose Floating Card or Top Island and tune linked border, waveform, and progress effects.")

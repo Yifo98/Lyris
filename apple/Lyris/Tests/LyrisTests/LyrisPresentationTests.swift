@@ -655,9 +655,9 @@ final class LyrisPresentationTests: XCTestCase {
             provider: .deepSeek,
             model: "deepseek-v4-flash"
         )
-        XCTAssertEqual(deepSeek.rates.inputUSDPerMillion, 0.44)
-        XCTAssertEqual(deepSeek.rates.outputUSDPerMillion, 1.32)
-        XCTAssertEqual(deepSeek.verifiedDate, "2026-08-18")
+        XCTAssertEqual(deepSeek.rates.inputUSDPerMillion, 0.30)
+        XCTAssertEqual(deepSeek.rates.outputUSDPerMillion, 1.20)
+        XCTAssertEqual(deepSeek.verifiedDate, "2026-10-08")
         XCTAssertNotNil(deepSeek.sourceURL)
 
         let openAI = TranslationPricingCatalog.reference(

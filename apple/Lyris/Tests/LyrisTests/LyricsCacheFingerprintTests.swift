@@ -115,12 +115,48 @@ final class LyricsCacheFingerprintTests: XCTestCase {
                 baseline.replacing(promptVersion: "lyrics-translation-v3"),
                 baseline.replacing(schemaVersion: baseline.schemaVersion + 1),
                 baseline.replacing(appVersion: "0.3.0"),
+                baseline.replacing(endpointIdentity: "another-endpoint-digest"),
             ]
 
             for variant in variants {
                 let loaded = await cache.loadGenerated(fingerprint: variant)
                 XCTAssertNil(loaded, "A changed fingerprint field must be a cache miss: \(variant)")
             }
+        }
+    }
+
+    func testEndpointSeparatesExactCachesWhileKeepingExplicitFallback() async throws {
+        try await withCache { cache in
+            let first = makeFingerprint().replacing(endpointIdentity: "endpoint-one")
+            let second = first.replacing(endpointIdentity: "endpoint-two")
+            try await cache.save(makeGeneratedEntry(fingerprint: first))
+            let miss = await cache.loadLatestGenerated(matching: LyricsCacheLookupKey(fingerprint: second))
+            XCTAssertNil(miss)
+            let fallback = await cache.loadCompatibleGeneratedFallback(matching: LyricsCacheLookupKey(fingerprint: second))
+            XCTAssertEqual(fallback?.fingerprint, first)
+
+            try await cache.save(makeGeneratedEntry(fingerprint: second, translation: "second endpoint"))
+            let firstHit = await cache.loadLatestGenerated(matching: LyricsCacheLookupKey(fingerprint: first))
+            let secondHit = await cache.loadLatestGenerated(matching: LyricsCacheLookupKey(fingerprint: second))
+            XCTAssertEqual(firstHit?.lyrics.first?.translation, "cached translation")
+            XCTAssertEqual(secondHit?.lyrics.first?.translation, "second endpoint")
+        }
+    }
+
+    func testLegacyCacheWithoutEndpointDecodesAndRemainsFallbackOnly() async throws {
+        try await withCache { cache in
+            let legacy = makeFingerprint()
+            let data = try JSONEncoder().encode(legacy)
+            XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("endpointIdentity"))
+            let decoded = try JSONDecoder().decode(LyricsCacheFingerprint.self, from: data)
+            XCTAssertNil(decoded.endpointIdentity)
+            try await cache.save(makeGeneratedEntry(fingerprint: decoded))
+
+            let key = LyricsCacheLookupKey(fingerprint: decoded.replacing(endpointIdentity: "endpoint-one"))
+            let exact = await cache.loadLatestGenerated(matching: key)
+            let fallback = await cache.loadCompatibleGeneratedFallback(matching: key)
+            XCTAssertNil(exact)
+            XCTAssertEqual(fallback?.lyrics.first?.translation, "cached translation")
         }
     }
 
@@ -274,7 +310,8 @@ private extension LyricsCacheFingerprint {
         thinkingEnabled: Bool? = nil,
         promptVersion: String? = nil,
         schemaVersion: Int? = nil,
-        appVersion: String? = nil
+        appVersion: String? = nil,
+        endpointIdentity: String? = nil
     ) -> LyricsCacheFingerprint {
         LyricsCacheFingerprint(
             trackID: trackID ?? self.trackID,
@@ -286,7 +323,8 @@ private extension LyricsCacheFingerprint {
             thinkingEnabled: thinkingEnabled ?? self.thinkingEnabled,
             promptVersion: promptVersion ?? self.promptVersion,
             schemaVersion: schemaVersion ?? self.schemaVersion,
-            appVersion: appVersion ?? self.appVersion
+            appVersion: appVersion ?? self.appVersion,
+            endpointIdentity: endpointIdentity ?? self.endpointIdentity
         )
     }
 }

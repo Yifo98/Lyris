@@ -19,6 +19,34 @@ struct LyricsCacheFingerprint: Codable, Equatable, Hashable, Sendable {
     let promptVersion: String
     let schemaVersion: Int
     let appVersion: String
+    // Missing on older caches, which remain available as explicit fallbacks.
+    let endpointIdentity: String?
+
+    init(
+        trackID: String,
+        lyricsSourceID: String,
+        originalLyricsHash: String,
+        targetLanguage: String,
+        provider: String,
+        model: String,
+        thinkingEnabled: Bool,
+        promptVersion: String,
+        schemaVersion: Int,
+        appVersion: String,
+        endpointIdentity: String? = nil
+    ) {
+        self.trackID = trackID
+        self.lyricsSourceID = lyricsSourceID
+        self.originalLyricsHash = originalLyricsHash
+        self.targetLanguage = targetLanguage
+        self.provider = provider
+        self.model = model
+        self.thinkingEnabled = thinkingEnabled
+        self.promptVersion = promptVersion
+        self.schemaVersion = schemaVersion
+        self.appVersion = appVersion
+        self.endpointIdentity = endpointIdentity
+    }
 
     static func originalLyricsHash(for lyrics: [TimedLyric]) -> String {
         var canonical = Data()
@@ -31,7 +59,7 @@ struct LyricsCacheFingerprint: Codable, Equatable, Hashable, Sendable {
     }
 
     fileprivate var storageKey: String {
-        [
+        var fields = [
             trackID,
             lyricsSourceID,
             originalLyricsHash,
@@ -43,8 +71,8 @@ struct LyricsCacheFingerprint: Codable, Equatable, Hashable, Sendable {
             String(schemaVersion),
             appVersion,
         ]
-        .map { "\($0.utf8.count):\($0)" }
-        .joined(separator: "|")
+        if let endpointIdentity { fields.append(endpointIdentity) }
+        return fields.map { "\($0.utf8.count):\($0)" }.joined(separator: "|")
     }
 
     fileprivate var isComplete: Bool {
@@ -79,6 +107,7 @@ struct LyricsCacheLookupKey: Codable, Equatable, Hashable, Sendable {
     let promptVersion: String
     let schemaVersion: Int
     let appVersion: String
+    let endpointIdentity: String?
 
     init(
         trackID: String,
@@ -88,7 +117,8 @@ struct LyricsCacheLookupKey: Codable, Equatable, Hashable, Sendable {
         thinkingEnabled: Bool,
         promptVersion: String,
         schemaVersion: Int,
-        appVersion: String
+        appVersion: String,
+        endpointIdentity: String? = nil
     ) {
         self.trackID = trackID
         self.targetLanguage = targetLanguage
@@ -98,6 +128,7 @@ struct LyricsCacheLookupKey: Codable, Equatable, Hashable, Sendable {
         self.promptVersion = promptVersion
         self.schemaVersion = schemaVersion
         self.appVersion = appVersion
+        self.endpointIdentity = endpointIdentity
     }
 
     init(fingerprint: LyricsCacheFingerprint) {
@@ -109,10 +140,11 @@ struct LyricsCacheLookupKey: Codable, Equatable, Hashable, Sendable {
         promptVersion = fingerprint.promptVersion
         schemaVersion = fingerprint.schemaVersion
         appVersion = fingerprint.appVersion
+        endpointIdentity = fingerprint.endpointIdentity
     }
 
     fileprivate var storageKey: String {
-        [
+        var fields = [
             trackID,
             targetLanguage,
             provider,
@@ -122,8 +154,8 @@ struct LyricsCacheLookupKey: Codable, Equatable, Hashable, Sendable {
             String(schemaVersion),
             appVersion,
         ]
-        .map { "\($0.utf8.count):\($0)" }
-        .joined(separator: "|")
+        if let endpointIdentity { fields.append(endpointIdentity) }
+        return fields.map { "\($0.utf8.count):\($0)" }.joined(separator: "|")
     }
 
     fileprivate var compatibleStorageKey: String {

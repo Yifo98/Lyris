@@ -948,7 +948,7 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
 
     var defaultModel: String {
         switch self {
-        case .deepSeek: "deepseek-v4-flash"
+        case .deepSeek: "deepseek-flash"
         case .openAI: "gpt-5-mini"
         case .deepL: ""
         case .custom: ""
@@ -1094,7 +1094,9 @@ enum CostCurrency: String, CaseIterable, Identifiable, Codable, Sendable {
 }
 
 enum TranslationPricingCatalog {
-    static let revision = "2026-08-18.3"
+    static func revision(for provider: TranslationProvider) -> String {
+        provider == .deepSeek ? "2026-10-08.1" : "2026-08-18.3"
+    }
 
     struct Reference: Equatable, Sendable {
         let rates: TranslationPricingRates
@@ -1103,7 +1105,9 @@ enum TranslationPricingCatalog {
         let note: String
     }
 
-    // Official reference defaults checked on 2026-08-18. DeepSeek's input
+    // DeepSeek defaults checked on 2026-10-08; other providers on 2026-08-18.
+    // https://api-docs.deepseek.com/quick_start/pricing/
+    // DeepSeek's input
     // estimate uses the cache-miss rate because Lyris cannot promise a cache hit.
     static func reference(
         provider: TranslationProvider,
@@ -1128,7 +1132,7 @@ enum TranslationPricingCatalog {
         }
         return Reference(
             rates: rates,
-            verifiedDate: "2026-08-18",
+            verifiedDate: provider == .deepSeek ? "2026-10-08" : "2026-08-18",
             sourceURL: sourceURL,
             note: note
         )
@@ -1148,8 +1152,8 @@ enum TranslationPricingCatalog {
                 )
             }
             return TranslationPricingRates(
-                inputUSDPerMillion: 0.44,
-                outputUSDPerMillion: 1.32
+                inputUSDPerMillion: 0.30,
+                outputUSDPerMillion: 1.20
             )
         case .openAI:
             if normalizedModel.contains("gpt-5.6-sol") || normalizedModel == "gpt-5.6" {

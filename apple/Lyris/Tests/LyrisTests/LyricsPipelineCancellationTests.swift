@@ -269,17 +269,188 @@ final class LyricsPipelineCancellationTests: XCTestCase {
         XCTAssertTrue(store.lyricPipelineStatus?.contains("兼容缓存") == true)
     }
 
+    func testManualSaveRejectsDraftAfterTrackChangesAndKeepsDraft() async throws {
+        let playback = TestPlaybackAdapter()
+        let cache = RecordingLyricsCache()
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: ImmediateLyricsProvider(),
+            translation: ImmediateTranslationAdapter(),
+            vault: EmptyCredentialVault(),
+            cache: cache
+        )
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        try await eventually { !store.lyrics.isEmpty }
+        store.showManualLyricsEditor()
+        store.manualLyricsDraft = "[00:00.00] Manual A"
+        playback.emit(snapshot(trackID: "spotify:track:b", title: "B"))
+        try await eventually { store.playback.track.id == "spotify:track:b" && !store.lyrics.isEmpty }
+
+        store.saveManualLyrics()
+
+        let savedCount = await cache.savedEntryCount()
+        XCTAssertEqual(savedCount, 0)
+        XCTAssertEqual(store.lyrics.first?.original, "source-line")
+        XCTAssertEqual(store.manualLyricsDraft, "[00:00.00] Manual A")
+        XCTAssertTrue(store.cacheStatus?.contains("歌曲已经切换") == true)
+
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        try await eventually { store.playback.track.id == "spotify:track:a" && !store.lyrics.isEmpty }
+        store.saveManualLyrics()
+        try await eventually { store.lyrics.first?.original == "Manual A" }
+        let entries = await cache.savedEntries()
+        XCTAssertEqual(entries.map(\.trackID), ["spotify:track:a"])
+    }
+
+    func testManualSaveCancelsLateProviderAndPublishesUserLocalReadyState() async throws {
+        let playback = TestPlaybackAdapter()
+        let provider = ControlledLyricsProvider()
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: provider,
+            translation: ImmediateTranslationAdapter(),
+            vault: EmptyCredentialVault()
+        )
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        await provider.waitUntilRequested(trackID: "spotify:track:a")
+        store.showManualLyricsEditor()
+        store.manualLyricsDraft = "[00:00.00] Manual A"
+        store.saveManualLyrics()
+        try await eventually { store.lyrics.first?.original == "Manual A" }
+
+        await provider.resolve(trackID: "spotify:track:a", original: "Late network A")
+        for _ in 0..<30 { await Task.yield() }
+
+        XCTAssertEqual(store.lyrics.first?.original, "Manual A")
+        guard case .ready(let trackID, _, .lineSynced, .userLocal) = store.lyricsPipelineState else {
+            return XCTFail("Saved manual lyrics must replace the loading state")
+        }
+        XCTAssertEqual(trackID, "spotify:track:a")
+    }
+
+    func testManualSaveCancelsLateTranslationWithoutRecordingUsage() async throws {
+        let playback = TestPlaybackAdapter()
+        let translation = ControlledTranslationAdapter()
+        let cache = RecordingLyricsCache()
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: ImmediateLyricsProvider(),
+            translation: translation,
+            vault: StaticCredentialVault(secret: "fixture-key"),
+            cache: cache
+        )
+        try await eventually { !store.translationAPIKey.isEmpty }
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        await translation.waitUntilRequested()
+        store.showManualLyricsEditor()
+        store.manualLyricsDraft = "[00:00.00] Manual A || 手动译文"
+        store.saveManualLyrics()
+        try await eventually { store.lyrics.first?.original == "Manual A" }
+
+        await translation.resolve(["Late translation"])
+        for _ in 0..<30 { await Task.yield() }
+
+        XCTAssertEqual(store.lyrics.first?.translation, "手动译文")
+        XCTAssertEqual(store.apiRequestCount, 0)
+        let entries = await cache.savedEntries()
+        XCTAssertEqual(entries.map(\.source), [.manual])
+    }
+
+    func testFailedManualSaveKeepsEditorDraftAndDoesNotClaimSuccess() async throws {
+        let playback = TestPlaybackAdapter()
+        let cache = ControlledManualLyricsCache()
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: ImmediateLyricsProvider(),
+            translation: ImmediateTranslationAdapter(),
+            vault: EmptyCredentialVault(),
+            cache: cache
+        )
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        try await eventually { !store.lyrics.isEmpty }
+        store.showManualLyricsEditor()
+        store.manualLyricsDraft = "[00:00.00] Manual A"
+        store.saveManualLyrics()
+        await cache.waitUntilSaving()
+        XCTAssertEqual(store.lyrics.first?.original, "source-line")
+
+        await cache.finish(error: CocoaError(.fileWriteNoPermission))
+        try await eventually { store.cacheStatus?.contains("保存失败") == true }
+
+        XCTAssertEqual(store.manualLyricsDraft, "[00:00.00] Manual A")
+        XCTAssertEqual(store.presentation, .manualLyricsEditor)
+        XCTAssertNotEqual(store.lyrics.first?.original, "Manual A")
+    }
+
+    func testTrackChangeDuringManualSaveDoesNotReplaceNewTrackOrCloseItsEditor() async throws {
+        let playback = TestPlaybackAdapter()
+        let cache = ControlledManualLyricsCache()
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: ImmediateLyricsProvider(),
+            translation: ImmediateTranslationAdapter(),
+            vault: EmptyCredentialVault(),
+            cache: cache
+        )
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        try await eventually { !store.lyrics.isEmpty }
+        store.showManualLyricsEditor()
+        store.manualLyricsDraft = "[00:00.00] Manual A"
+        store.saveManualLyrics()
+        await cache.waitUntilSaving()
+        playback.emit(snapshot(trackID: "spotify:track:b", title: "B"))
+        try await eventually { store.playback.track.id == "spotify:track:b" && !store.lyrics.isEmpty }
+        store.showManualLyricsEditor()
+        store.manualLyricsDraft = "[00:00.00] Manual B"
+
+        await cache.finish()
+        for _ in 0..<30 { await Task.yield() }
+
+        let saved = await cache.savedTrackID()
+        XCTAssertEqual(saved, "spotify:track:a")
+        XCTAssertEqual(store.lyrics.first?.original, "source-line")
+        XCTAssertEqual(store.manualLyricsDraft, "[00:00.00] Manual B")
+        XCTAssertEqual(store.presentation, .manualLyricsEditor)
+    }
+
+    func testChangingBaseURLTranslatesAgainInsteadOfReusingExactDiskCache() async throws {
+        let playback = TestPlaybackAdapter()
+        let translation = CountingTranslationAdapter()
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LyrisEndpointCacheTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        let store = makeStore(
+            playback: playback,
+            lyricsProvider: ImmediateLyricsProvider(),
+            translation: translation,
+            vault: StaticCredentialVault(secret: "fixture-key"),
+            cache: LyricsDiskCache(rootURL: cacheURL)
+        )
+        try await eventually { !store.translationAPIKey.isEmpty }
+        playback.emit(snapshot(trackID: "spotify:track:a", title: "A"))
+        try await eventually { store.lyrics.first?.translation == "translation-1" }
+
+        store.updateTranslationBaseURLDraft("https://replacement.example/v1")
+        store.saveTranslationConfiguration()
+        try await eventually { store.lyrics.first?.translation == "translation-2" }
+
+        let endpoints = await translation.requestedEndpoints()
+        XCTAssertEqual(endpoints, [TranslationProvider.deepSeek.defaultBaseURL, "https://replacement.example/v1"])
+        XCTAssertEqual(store.translationCacheHits, 0)
+    }
+
     private func makeStore(
         playback: TestPlaybackAdapter,
         lyricsProvider: any LyricsProviding,
         translation: any TranslationProviding,
         vault: any CredentialVault,
-        cache: RecordingLyricsCache = RecordingLyricsCache(),
+        cache: any LyricsCaching = RecordingLyricsCache(),
         retryMinimumDelay: TimeInterval = 1
     ) -> LyrisStore {
         let suiteName = "Lyris.LyricsPipelineCancellationTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
         defaults.set(TranslationProvider.deepSeek.rawValue, forKey: "translationProvider")
         return LyrisStore(
             playbackAdapter: playback,
@@ -290,7 +461,8 @@ final class LyricsPipelineCancellationTests: XCTestCase {
             lyricsCacheStore: cache,
             translationOverrideStore: EmptyTranslationOverrideStore(),
             defaults: defaults,
-            lyricsRetryMinimumDelay: retryMinimumDelay
+            lyricsRetryMinimumDelay: retryMinimumDelay,
+            configurationWriter: { _ in }
         )
     }
 
@@ -526,6 +698,43 @@ private actor RecordingLyricsCache: LyricsCaching {
     func clearGenerated() async throws {}
     func clearManual() async throws {}
     func savedEntryCount() -> Int { entries.count }
+    func savedEntries() -> [LyricsCacheEntry] { entries }
+}
+
+private actor ControlledManualLyricsCache: LyricsCaching {
+    private var pending: CheckedContinuation<Void, Error>?
+    private var trackID: String?
+
+    func loadManual(trackID: String) async -> LyricsCacheEntry? { nil }
+    func loadLatestGenerated(matching key: LyricsCacheLookupKey) async -> LyricsCacheEntry? { nil }
+    func loadGenerated(fingerprint: LyricsCacheFingerprint) async -> LyricsCacheEntry? { nil }
+    func clearGenerated() async throws {}
+    func clearManual() async throws {}
+    func save(_ entry: LyricsCacheEntry) async throws {
+        trackID = entry.trackID
+        try await withCheckedThrowingContinuation { pending = $0 }
+    }
+    func waitUntilSaving() async {
+        while pending == nil { await Task.yield() }
+    }
+    func finish(error: Error? = nil) {
+        if let error { pending?.resume(throwing: error) }
+        else { pending?.resume() }
+        pending = nil
+    }
+    func savedTrackID() -> String? { trackID }
+}
+
+private actor CountingTranslationAdapter: TranslationProviding {
+    private var endpoints: [String] = []
+    func requestedEndpoints() -> [String] { endpoints }
+    func testConnection(configuration: TranslationConfiguration, apiKey: String) async throws -> TranslationConnectionReport {
+        TranslationConnectionReport(models: [configuration.model], suggestedModel: configuration.model, latencyMilliseconds: 0)
+    }
+    func translate(lines: [String], targetLanguage: String, configuration: TranslationConfiguration, apiKey: String) async throws -> [String] {
+        endpoints.append(configuration.baseURL)
+        return lines.map { _ in "translation-\(endpoints.count)" }
+    }
 }
 
 private actor EmptyTranslationOverrideStore: UserTranslationOverrideStoring {

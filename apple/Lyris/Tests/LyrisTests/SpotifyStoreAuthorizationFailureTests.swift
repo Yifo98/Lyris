@@ -89,7 +89,8 @@ final class SpotifyStoreAuthorizationFailureTests: XCTestCase {
             spotifyAuthorizer: AuthorizationFailureSpotifyAuthorizer(error: error),
             credentialVault: AuthorizationFailureCredentialVault(),
             lyricsCacheStore: AuthorizationFailureLyricsCache(),
-            defaults: defaults
+            defaults: defaults,
+            configurationWriter: { _ in }
         )
         return (store, {
             defaults.removePersistentDomain(forName: suiteName)

@@ -2,6 +2,7 @@
 
 ## Current phase
 
+- macOS is the only supported product platform. Maintain the native SwiftUI/AppKit target; do not add Windows targets, platform adapters, installers, or cross-platform shell scaffolding. Windows references in competitive research are historical evidence only.
 - The former MeloFloat overlay, Top Island, menu-bar lyrics, settings shell, brand assets, release packages, and demo-video projects were retired on 2026-08-17.
 - Do not restore or incrementally restyle the deleted SwiftUI/AppKit presentation shell.
 - The user approved the new product name `Lyris` and the design drop delivered on 2026-08-17.

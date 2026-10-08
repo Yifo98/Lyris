@@ -89,14 +89,17 @@ final class LyrisAppDelegate: NSObject, NSApplicationDelegate {
             translationAdapter: HTTPTranslationAdapter(),
             spotifyAuthorizer: spotifyAuthorizer,
             credentialVault: vault,
-            defaults: defaults
+            defaults: defaults,
+            configurationWriter: { configuration in
+                if !isDemo { LyrisDataLocation.writeConfiguration(configuration) }
+            }
         )
         if isDemo {
             store.finishFirstUseLater()
             #if DEBUG
             if arguments.contains("--qa-translation-models") {
                 store.loadTranslationModelsForQA([
-                    "deepseek-v4-flash",
+                    "deepseek-flash",
                     "deepseek-v4-pro",
                     "deepseek-reasoner",
                 ])

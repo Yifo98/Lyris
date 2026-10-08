@@ -2,6 +2,8 @@
 
 Lyris is a native macOS Spotify and synchronized-lyrics companion. The repository, Swift package, executable, application bundle, and project-local data directory all use the **Lyris** identity.
 
+macOS is the sole supported platform. The app uses SwiftUI/AppKit, Spotify Apple Events, and macOS Keychain. `apple/Lyris` is the only application and build target.
+
 [Download Lyris v1.0.0](https://github.com/Yifo98/Lyris/releases/tag/v1.0.0) · Apple Silicon · macOS 13+
 
 ## Screenshots
@@ -32,11 +34,12 @@ The retired MeloFloat overlay and brand are no longer part of the running applic
 
 `apple/Lyris` is the native Swift package and builds `Lyris.app`.
 
-For normal local use, double-click `启动 Lyris.command` in the repository root. It rebuilds only when source or packaging files are newer than the App binary, then opens Lyris.
+For normal local use, double-click `启动 Lyris.command` in the repository root. SwiftPM checks the incremental build using the macOS 13 deployment target in `Package.swift`; the installed OS version is not used as a deployment target. Packaging compares content hashes and retains an unchanged signed app before opening Lyris.
 
 ```bash
 cd apple/Lyris
 swift test
+sh Tests/Integration/LauncherSmokeTests.sh
 ./scripts/build-qa-app.sh
 open .build/qa/Lyris.app
 ```

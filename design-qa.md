@@ -9,7 +9,7 @@ This document records the durable visual and interaction acceptance criteria for
 - [Desktop lyrics screenshot](docs/assets/screenshots/lyris-desktop-lyrics.png)
 - [Settings screenshot](docs/assets/screenshots/lyris-settings.png)
 
-The screenshots establish hierarchy, density, tone, and interaction intent. They are product evidence rather than pixel-perfect Windows layouts.
+The screenshots establish hierarchy, density, tone, and interaction intent for the native macOS surfaces.
 
 ## Accepted product surfaces
 
